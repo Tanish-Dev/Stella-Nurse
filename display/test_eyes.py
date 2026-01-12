@@ -1,40 +1,30 @@
 import time
-from luma.core.interface.serial import spi
-from luma.lcd.device import st7789
-from roboeyes.eyes import RoboEyes
+from display.display_driver import init_display
+from display.eyes import RoboEyes
 
-# SPI setup
-serial = spi(
-    port=0,
-    device=0,
-    gpio_DC=25,
-    gpio_RST=27
-)
+device = init_display()
 
-device = st7789(
-    serial,
+eyes = RoboEyes(
+    device=device,
     width=128,
     height=128,
-    rotate=0
+    fps=30
 )
 
-# Start eyes
-eyes = RoboEyes(device, fps=30)
 eyes.start()
 
-print("Testing RoboEyes...")
+try:
+    eyes.set_state("idle")
+    time.sleep(5)
 
-eyes.set_state("idle")
-time.sleep(5)
+    eyes.set_state("listening")
+    time.sleep(5)
 
-eyes.set_state("listening")
-time.sleep(4)
+    eyes.set_state("speaking")
+    time.sleep(5)
 
-eyes.set_state("speaking")
-time.sleep(4)
+    eyes.set_state("alert")
+    time.sleep(5)
 
-eyes.set_state("alert")
-time.sleep(5)
-
-eyes.stop()
-print("Done.")
+finally:
+    eyes.stop()
