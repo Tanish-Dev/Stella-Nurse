@@ -7,7 +7,7 @@ def init_display():
         port=0,
         device=0,
         gpio_DC=25,
-        gpio_RST=None,   # <-- DISABLE RESET
+        gpio_RST=27,   # <-- DISABLE RESET
         bus_speed_hz=8000000
     )
 
