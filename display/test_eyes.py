@@ -1,6 +1,6 @@
 import time
-from display.display_driver import init_display
-from display.eyes import RoboEyes
+from display_driver import init_display
+from eyes import RoboEyes
 
 device = init_display()
 

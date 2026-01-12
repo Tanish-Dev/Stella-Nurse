@@ -2,7 +2,7 @@ import time
 from luma.core.interface.serial import spi
 from luma.lcd.device import st7789
 
-from display.eyes import RoboEyes
+from eyes import RoboEyes
 
 # SPI CONFIG — match your wiring
 serial = spi(
