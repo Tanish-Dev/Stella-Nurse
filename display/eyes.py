@@ -109,7 +109,23 @@ class RoboEyes:
         for i in range(3):
             self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 0.12
 
-    def _update_blink(self):angle=0.0, color=(0, 220, 255), is_left=True):
+    def _update_blink(self):
+        now = time.time()
+
+        # Blink every 4–7 seconds (natural)
+        if now - self.last_blink > random.uniform(4.0, 7.0):
+            self.blink_target = 0.05
+            self.last_blink = now
+            self.blink_speed = 0.6  # Fast blink down
+
+        # Animate blink
+        self.blink_value += (self.blink_target - self.blink_value) * self.blink_speed
+
+        if self.blink_value < 0.1:
+            self.blink_target = 1.0
+            self.blink_speed = 0.35  # Slower blink up
+
+    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True):
         """Draw a single eye with rotation and pupil support"""
         size_x = int(self.eye_size * scale_x * self.eye_width_scale)
         size_y = int(self.eye_size * scale_y * self.eye_height_scale * self.blink_value)
@@ -149,8 +165,14 @@ class RoboEyes:
                     x + pupil_radius,
                     y + pupil_radius
                 ]
-                draw.ellipse(pupil_bbox, fill=(0, 0, 0)size_y = int(self.eye_size * scale_y * self.blink_value)
+                draw.ellipse(pupil_bbox, fill=(0, 0, 0))
 
+    def _render(self):
+        img = Image.new("RGB", (self.width, self.height), "black")
+        draw = ImageDraw.Draw(img)
+
+        with self._lock:
+            state = self.state
             if state != self.previous_state:
                 self.state_transition_time = time.time()
                 self.previous_state = state
@@ -343,29 +365,7 @@ class RoboEyes:
         color = tuple(int(c) for c in self.current_color)
         
         self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True)
-        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False
-        # Perspective scaling (depth illusion)
-        direction = self.current_x / 18.0
-        direction = max(-1.0, min(1.0, direction))
-
-        left_scale_x = 1.0 - (direction * 0.25)
-        right_scale_x = 1.0 + (direction * 0.25)
-
-        left_scale_x = max(0.8, min(1.35, left_scale_x))
-        right_scale_x = max(0.8, min(1.35, right_scale_x))
-
-        # Vertical emotion scaling
-        if state == "alert":
-            scale_y = 1.2
-        elif state == "concerned":
-            scale_y = 0.75
-        else:
-            scale_y = 1.0
-
-        # ================= DRAW ================= #
-
-        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y)
-        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y)
+        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False)
 
         return img
 
