@@ -38,7 +38,7 @@ class RoboEyes:
         self.target_x = 0.0
         self.target_y = 0.0
 
-        self.move_speed = 0.28  # snappy but smooth
+        self.move_speed = 0.18  # slower, smoother
         self.last_idle_move = time.time()
 
         # Blink system
@@ -95,19 +95,19 @@ class RoboEyes:
         self.current_x += (self.target_x - self.current_x) * self.move_speed
         self.current_y += (self.target_y - self.current_y) * self.move_speed
         
-        # Smooth eye shape morphing
-        self.eye_width_scale += (self.target_width_scale - self.eye_width_scale) * 0.15
-        self.eye_height_scale += (self.target_height_scale - self.eye_height_scale) * 0.15
+        # Smooth eye shape morphing (slower for smoother transitions)
+        self.eye_width_scale += (self.target_width_scale - self.eye_width_scale) * 0.08
+        self.eye_height_scale += (self.target_height_scale - self.eye_height_scale) * 0.08
         
         # Smooth angle transitions
-        self.eye_angle += (self.target_angle - self.eye_angle) * 0.2
+        self.eye_angle += (self.target_angle - self.eye_angle) * 0.12
         
         # Smooth pupil size changes
-        self.pupil_size += (self.target_pupil_size - self.pupil_size) * 0.18
+        self.pupil_size += (self.target_pupil_size - self.pupil_size) * 0.10
         
         # Smooth color transitions
         for i in range(3):
-            self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 0.12
+            self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 0.08
 
     def _update_blink(self):
         now = time.time()
@@ -134,7 +134,7 @@ class RoboEyes:
         half_h = size_y // 2
 
         # Main eye shape
-        if angle != 0:
+        if abs(angle) > 0.05:  # Only use polygon for significant angles
             # For angled eyes (emotions like angry), create polygon
             cos_a = math.cos(angle)
             sin_a = math.sin(angle)
@@ -152,7 +152,9 @@ class RoboEyes:
         else:
             # Standard rounded rectangle for most emotions
             bbox = [x - half_w, y - half_h, x + half_w, y + half_h]
-            radius = int(self.corner_radius * scale_x)
+            # Ensure minimum radius for smooth corners
+            radius = max(6, int(self.corner_radius * scale_x * min(self.eye_width_scale, 1.0)))
+            radius = min(radius, half_w, half_h)  # Don't exceed eye size
             draw.rounded_rectangle(bbox, radius=radius, fill=color)
         
         # Draw pupil for certain emotions (like surprised, curious)
@@ -185,159 +187,150 @@ class RoboEyes:
 
         if state == "idle":
             # Gentle wandering with occasional micro-movements
-            if now - self.last_idle_move > 1.6:
-                self.target_x = random.uniform(-14, 14)
-                self.target_y = random.uniform(-6, 6)
+            if now - self.last_idle_move > 2.5:
+                self.target_x = random.uniform(-10, 10)
+                self.target_y = random.uniform(-4, 4)
                 self.last_idle_move = now
             
             self.target_width_scale = 1.0
             self.target_height_scale = 1.0
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (0, 220, 255)
+            self.target_color = (0, 200, 255)  # Blue
 
         elif state == "happy":
-            # Wide eyes, slight bounce, bright color
-            bounce = math.sin(self.animation_phase * 2) * 2
+            # Squinted happy eyes with gentle upward curve
             self.target_x = 0
-            self.target_y = bounce
-            self.target_width_scale = 1.15
-            self.target_height_scale = 0.85  # Squinted happy eyes
+            self.target_y = -3
+            self.target_width_scale = 1.25  # Wider
+            self.target_height_scale = 0.65  # Much more squinted
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (255, 200, 0)  # Warm yellow/orange
+            self.target_color = (0, 200, 255)  # Stay blue
 
         elif state == "sad":
-            # Droopy eyes, looking down
+            # Droopy eyes, looking down, very narrow
             self.target_x = 0
-            self.target_y = 12
-            self.target_width_scale = 0.9
-            self.target_height_scale = 0.7
-            self.target_angle = 0.15  # Slight droop angle
+            self.target_y = 18
+            self.target_width_scale = 0.85
+            self.target_height_scale = 0.45  # Very droopy
+            self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (100, 150, 255)  # Cool blue
+            self.target_color = (0, 180, 240)  # Dimmer blue
 
         elif state == "angry":
-            # Narrowed eyes with sharp angle
-            pulse = abs(math.sin(self.animation_phase * 3)) * 0.1
+            # Very narrowed eyes, intense
             self.target_x = 0
-            self.target_y = -8
-            self.target_width_scale = 1.2
-            self.target_height_scale = 0.4 + pulse  # Narrow, pulsing
-            self.target_angle = -0.25  # Angry tilt
+            self.target_y = -6
+            self.target_width_scale = 1.3
+            self.target_height_scale = 0.3  # Very narrow, no pulsing
+            self.target_angle = -0.2  # Angry tilt
             self.target_pupil_size = 0.0
-            self.target_color = (255, 50, 50)  # Red
+            self.target_color = (255, 50, 50)  # Red - one of few colored
 
         elif state == "surprised":
-            # Wide open eyes with visible pupils
+            # Very wide open eyes with visible pupils
             self.target_x = 0
-            self.target_y = -5
-            self.target_width_scale = 1.3
-            self.target_height_scale = 1.4
+            self.target_y = -8
+            self.target_width_scale = 1.4  # Much wider
+            self.target_height_scale = 1.5  # Much taller
             self.target_angle = 0.0
-            self.target_pupil_size = 0.8  # Show pupils when surprised
-            self.target_color = (255, 255, 255)  # Bright white
+            self.target_pupil_size = 0.9  # Large pupils
+            self.target_color = (200, 240, 255)  # Bright blue-white
 
         elif state == "curious":
-            # One eye slightly higher, pupils visible, head-tilt simulation
-            tilt = math.sin(self.animation_phase) * 3
-            self.target_x = tilt
-            self.target_y = -5
-            self.target_width_scale = 1.1
-            self.target_height_scale = 1.15
+            # Tilted, slightly wider with pupils
+            self.target_x = 0
+            self.target_y = -3
+            self.target_width_scale = 1.15
+            self.target_height_scale = 1.2
             self.target_angle = 0.0
-            self.target_pupil_size = 0.6
-            self.target_color = (150, 255, 200)  # Curious green-cyan
+            self.target_pupil_size = 0.5
+            self.target_color = (0, 200, 255)  # Keep blue
 
         elif state == "thinking":
-            # Eyes drift to side, slightly narrowed
-            drift = math.sin(self.animation_phase * 0.5) * 18
-            self.target_x = drift
-            self.target_y = -3
-            self.target_width_scale = 0.95
-            self.target_height_scale = 0.9
+            # Eyes look up and to the side
+            self.target_x = 12
+            self.target_y = -8
+            self.target_width_scale = 0.9
+            self.target_height_scale = 0.95
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (200, 200, 255)  # Light purple
+            self.target_color = (0, 180, 240)  # Dimmer blue
 
         elif state == "listening":
-            # Focused upward, attentive
+            # Focused upward, slightly wider and taller
             self.target_x = 0
-            self.target_y = -16
-            self.target_width_scale = 1.05
-            self.target_height_scale = 1.1
+            self.target_y = -18
+            self.target_width_scale = 1.1
+            self.target_height_scale = 1.2
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (0, 255, 200)  # Bright cyan-green
+            self.target_color = (0, 220, 255)  # Bright blue
 
         elif state == "speaking":
-            # Slight bob while speaking
-            bob = math.sin(self.animation_phase * 4) * 1.5
+            # Normal size, no movement
             self.target_x = 0
-            self.target_y = bob
+            self.target_y = 0
             self.target_width_scale = 1.0
             self.target_height_scale = 1.0
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (0, 220, 255)  # Standard cyan
+            self.target_color = (0, 200, 255)  # Blue
 
         elif state == "alert":
-            # Wide, focused, intense
+            # Wide open, looking straight, focused
             self.target_x = 0
-            self.target_y = -20
-            self.target_width_scale = 1.1
-            self.target_height_scale = 1.25
+            self.target_y = -12
+            self.target_width_scale = 1.2
+            self.target_height_scale = 1.35
             self.target_angle = 0.0
-            self.target_pupil_size = 0.4
-            self.target_color = (255, 180, 0)  # Alert orange
+            self.target_pupil_size = 0.3
+            self.target_color = (255, 160, 0)  # Orange - important alert color
 
         elif state == "concerned":
-            # Worried, slightly drooped
-            wobble = math.sin(self.animation_phase * 1.5) * 2
-            self.target_x = wobble
-            self.target_y = 10
-            self.target_width_scale = 1.0
-            self.target_height_scale = 0.75
-            self.target_angle = 0.08
-            self.target_pupil_size = 0.0
-            self.target_color = (255, 150, 100)  # Warm orange
-
-        elif state == "sleepy":
-            # Very droopy, slow blink
+            # Worried, drooped, narrow
             self.target_x = 0
-            self.target_y = 15
-            self.target_width_scale = 0.85
-            self.target_height_scale = 0.5
+            self.target_y = 8
+            self.target_width_scale = 0.9
+            self.target_height_scale = 0.7
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (100, 100, 150)  # Dim purple
+            self.target_color = (0, 180, 240)  # Dimmer blue
+
+        elif state == "sleepy":
+            # Very droopy and narrow
+            self.target_x = 0
+            self.target_y = 20
+            self.target_width_scale = 0.8
+            self.target_height_scale = 0.35  # Very droopy
+            self.target_angle = 0.0
+            self.target_pupil_size = 0.0
+            self.target_color = (0, 150, 200)  # Dim blue
             # Override blink timing for sleepy
-            if now - self.last_blink > 2.0:
+            if now - self.last_blink > 1.5:
                 self.blink_target = 0.05
                 self.last_blink = now
 
         elif state == "excited":
-            # Fast movement, wide eyes, bouncy
-            bounce = math.sin(self.animation_phase * 5) * 4
-            wiggle = math.cos(self.animation_phase * 3) * 6
-            self.target_x = wiggle
-            self.target_y = bounce
-            self.target_width_scale = 1.2
-            self.target_height_scale = 1.15
+            # Wide eyes, very energetic
+            self.target_x = 0
+            self.target_y = -5
+            self.target_width_scale = 1.3
+            self.target_height_scale = 1.25
             self.target_angle = 0.0
-            self.target_pupil_size = 0.5
-            self.target_color = (255, 100, 255)  # Excited magenta
+            self.target_pupil_size = 0.4
+            self.target_color = (100, 220, 255)  # Bright blue
 
         elif state == "love":
-            # Heart-eyes effect (simplified as wider, warm glow)
-            pulse = math.sin(self.animation_phase * 2) * 0.1 + 0.1
+            # Soft, squinted, warm feeling
             self.target_x = 0
             self.target_y = 0
-            self.target_width_scale = 1.1 + pulse
-            self.target_height_scale = 1.1 + pulse
+            self.target_width_scale = 1.15
+            self.target_height_scale = 0.75  # Squinted with love
             self.target_angle = 0.0
             self.target_pupil_size = 0.0
-            self.target_color = (255, 100, 150)  # Pink
+            self.target_color = (255, 120, 180)  # Pink - warm emotion
 
         # ================= ANIMATION ================= #
 

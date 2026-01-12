@@ -38,22 +38,17 @@ def main():
     eyes.start()
     print("✅ Animation loop started\n")
     
-    # Emotion showcase
+    # Emotion showcase - Key emotions only with clear differences
     demos = [
-        ("idle", 5, "😊 IDLE", "Gentle wandering gaze, natural micro-movements"),
-        ("happy", 5, "😄 HAPPY", "Joyful bouncing with squinted eyes"),
-        ("excited", 5, "🎉 EXCITED", "Energetic wiggling and bouncing"),
-        ("love", 5, "💕 LOVE", "Warm, pulsing affectionate gaze"),
-        ("surprised", 5, "😲 SURPRISED", "Wide eyes with visible pupils"),
-        ("curious", 6, "🤔 CURIOUS", "Tilted gaze with pupils showing"),
-        ("thinking", 6, "💭 THINKING", "Eyes drift to the side, contemplative"),
-        ("listening", 5, "👂 LISTENING", "Focused upward, attentive posture"),
-        ("speaking", 5, "💬 SPEAKING", "Gentle bobbing while communicating"),
-        ("alert", 5, "⚠️ ALERT", "Wide, intense, focused stare"),
-        ("concerned", 5, "😟 CONCERNED", "Worried wobble with slight droop"),
-        ("sad", 5, "😢 SAD", "Droopy, downward gaze"),
-        ("angry", 5, "😠 ANGRY", "Narrowed, pulsing intense stare"),
-        ("sleepy", 6, "😴 SLEEPY", "Very droopy with slow blinking"),
+        ("idle", 6, "😊 IDLE", "Gentle wandering, normal eyes"),
+        ("happy", 6, "😄 HAPPY", "Squinted joy, wider eyes"),
+        ("sad", 6, "😢 SAD", "Very droopy and narrow"),
+        ("surprised", 6, "😲 SURPRISED", "Very wide with big pupils"),
+        ("thinking", 6, "💭 THINKING", "Looking up and away"),
+        ("listening", 6, "👂 LISTENING", "Focused upward, attentive"),
+        ("alert", 6, "⚠️ ALERT", "Wide, intense, orange glow"),
+        ("sleepy", 6, "😴 SLEEPY", "Very droopy, slow blinks"),
+        ("love", 6, "💕 LOVE", "Squinted warmth, pink glow"),
     ]
     
     try:
