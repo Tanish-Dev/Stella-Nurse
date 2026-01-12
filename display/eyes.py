@@ -27,6 +27,7 @@ class RoboEyes:
         self.eye_size = eye_size
         self.eye_spacing = eye_spacing
         self.corner_radius = 12
+        self.base_height_scale = 1.15  # Slightly taller eyes overall
 
         self.center_y = height // 2
         self.left_eye_x = (width // 2) - eye_spacing // 2
@@ -41,11 +42,13 @@ class RoboEyes:
         self.move_speed = 0.18  # slower, smoother
         self.last_idle_move = time.time()
 
-        # Blink system
+        # Blink system - Cozmo style
         self.blink_value = 1.0
         self.blink_target = 1.0
         self.last_blink = time.time()
         self.blink_speed = 0.45
+        self.next_blink_time = time.time() + random.uniform(2.0, 5.0)
+        self.double_blink = False  # For occasional double blinks
 
         # Emotion-specific parameters
         self.eye_width_scale = 1.0
@@ -106,23 +109,70 @@ class RoboEyes:
     def _update_blink(self):
         now = time.time()
 
-        # Blink every 4–7 seconds (natural)
-        if now - self.last_blink > random.uniform(4.0, 7.0):
-            self.blink_target = 0.05
+        # Cozmo-style natural blinking with variation
+        if now >= self.next_blink_time and self.blink_value > 0.95:
+            # Start a blink
+            self.blink_target = 0.0
+            self.blink_speed = 0.85  # Very fast blink down (Cozmo-like)
             self.last_blink = now
-            self.blink_speed = 0.6  # Fast blink down
-
+            
+            # 20% chance of double blink (Cozmo does this!)
+            if random.random() < 0.2:
+                self.double_blink = True
+        
         # Animate blink
         self.blink_value += (self.blink_target - self.blink_value) * self.blink_speed
 
-        if self.blink_value < 0.1:
+        # Blink finished going down
+        if self.blink_value < 0.05 and self.blink_target < 0.5:
             self.blink_target = 1.0
-            self.blink_speed = 0.35  # Slower blink up
+            self.blink_speed = 0.4  # Slower blink up
+        
+        # Blink finished going up
+        if self.blink_value > 0.95 and self.blink_target > 0.5:
+            if self.double_blink:
+                # Quick second blink!
+                self.blink_target = 0.0
+                self.blink_speed = 0.85
+                self.double_blink = False
+            else:
+                # Schedule next blink with natural variation (2-6 seconds)
+                self.next_blink_time = now + random.uniform(2.0, 6.0)
 
-    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True):
+    def _draw_heart(self, draw, x, y, size, color):
+        """Draw a heart shape for love emotion"""
+        # Heart is made of two circles on top and a triangle on bottom
+        w = size
+        h = size
+        
+        # Draw filled heart using polygon approximation
+        points = []
+        # Top left curve
+        for angle in range(180, 360, 10):
+            px = x - w//4 + int(w//4 * math.cos(math.radians(angle)))
+            py = y - h//4 + int(h//4 * math.sin(math.radians(angle)))
+            points.append((px, py))
+        # Top right curve  
+        for angle in range(180, 360, 10):
+            px = x + w//4 + int(w//4 * math.cos(math.radians(angle)))
+            py = y - h//4 + int(h//4 * math.sin(math.radians(angle)))
+            points.append((px, py))
+        # Bottom point
+        points.append((x, y + h//2))
+        
+        draw.polygon(points, fill=color)
+
+    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True, is_heart=False):
         """Draw a single eye - no pupils, just solid shapes"""
+        
+        # Special case: draw heart for love emotion
+        if is_heart:
+            size = int(self.eye_size * scale_x * self.eye_width_scale)
+            self._draw_heart(draw, x, y, size, color)
+            return
+        
         size_x = int(self.eye_size * scale_x * self.eye_width_scale)
-        size_y = int(self.eye_size * scale_y * self.eye_height_scale * self.blink_value)
+        size_y = int(self.eye_size * scale_y * self.eye_height_scale * self.base_height_scale * self.blink_value)
 
         half_w = size_x // 2
         half_h = size_y // 2
@@ -180,11 +230,11 @@ class RoboEyes:
             self.target_color = (0, 200, 255)  # Blue
 
         elif state == "happy":
-            # Arc-shaped happy eyes like crescent smiles
+            # Crescent-shaped happy eyes (curved, not straight)
             self.target_x = 0
-            self.target_y = 2
-            self.target_width_scale = 1.4  # Wider arcs
-            self.target_height_scale = 0.25  # Very thin arcs
+            self.target_y = -5  # Slightly up for happy look
+            self.target_width_scale = 1.3  # Wide crescents
+            self.target_height_scale = 0.4  # Thin but not too thin (crescent shape)
             self.target_angle = 0.0
             self.target_color = (50, 255, 150)  # Bright happy blue-green
 
@@ -292,13 +342,13 @@ class RoboEyes:
             self.target_color = (100, 220, 255)  # Bright blue
 
         elif state == "love":
-            # Soft, squinted, warm feeling
+            # Heart-shaped eyes!
             self.target_x = 0
             self.target_y = 0
-            self.target_width_scale = 1.15
-            self.target_height_scale = 0.75  # Squinted with love
+            self.target_width_scale = 1.1
+            self.target_height_scale = 1.1  # Hearts maintain proportion
             self.target_angle = 0.0
-            self.target_color = (255, 120, 180)  # Pink - warm emotion
+            self.target_color = (255, 80, 120)  # Red-pink for hearts
 
         # ================= ANIMATION ================= #
 
@@ -325,8 +375,11 @@ class RoboEyes:
 
         color = tuple(int(c) for c in self.current_color)
         
-        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True)
-        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False)
+        # Check if we should draw hearts (love emotion)
+        is_heart = (state == "love")
+        
+        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True, is_heart=is_heart)
+        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False, is_heart=is_heart)
 
         return img
 
