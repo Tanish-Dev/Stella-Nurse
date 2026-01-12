@@ -18,7 +18,7 @@ disp = st7735.ST7735R(
     width=128,
     height=128,
     rotation=90,
-    bgr=True
+    bgr=False
 )
 
 # Create RED image
