@@ -61,11 +61,18 @@ class RoboEyes:
 
     # ---------------- DRAWING ---------------- #
 
-    def _draw_eye(self, draw, cx, cy, r, blink):
-        ry = int(r * blink)
-        draw.ellipse(
-            (cx - r, cy - ry, cx + r, cy + ry),
-            fill="white"
+    def _draw_idle_eye(self, draw, x, y, size=36, radius=12, color=(0, 220, 255)):
+        half = size // 2
+        bbox = [
+            x - half,
+            y - half,
+            x + half,
+            y + half
+        ]
+        draw.rounded_rectangle(
+            bbox,
+            radius=radius,
+            fill=color
         )
 
     def _render(self):
@@ -75,43 +82,38 @@ class RoboEyes:
         with self._lock:
             bx = self.eye_offset_x
             by = self.eye_offset_y
-            blink = self.blink_amount
             state = self.state
 
-        # State-based behavior
+        # ---------------- IDLE ---------------- #
         if state == "idle":
             if random.random() < 0.02:
                 self.look(random.randint(-6, 6), random.randint(-3, 3))
-            if random.random() < 0.01:
-                self.blink()
 
+            eye_y = self.center_y + by
+            left_x = self.left_eye_x + bx
+            right_x = self.right_eye_x + bx
+
+            self._draw_idle_eye(draw, left_x, eye_y)
+            self._draw_idle_eye(draw, right_x, eye_y)
+
+        # ---------------- LISTENING (placeholder) ---------------- #
         elif state == "listening":
-            self.look(0, -2)
+            eye_y = self.center_y - 4
+            self._draw_idle_eye(draw, self.left_eye_x, eye_y)
+            self._draw_idle_eye(draw, self.right_eye_x, eye_y)
 
+        # ---------------- SPEAKING (placeholder) ---------------- #
         elif state == "speaking":
-            blink *= 0.8
+            self._draw_idle_eye(draw, self.left_eye_x, self.center_y)
+            self._draw_idle_eye(draw, self.right_eye_x, self.center_y)
 
+        # ---------------- ALERT (placeholder) ---------------- #
         elif state == "alert":
-            blink = 1.2
-
-        # Draw eyes
-        self._draw_eye(
-            draw,
-            self.left_eye_x + bx,
-            self.center_y + by,
-            self.eye_radius,
-            blink
-        )
-
-        self._draw_eye(
-            draw,
-            self.right_eye_x + bx,
-            self.center_y + by,
-            self.eye_radius,
-            blink
-        )
+            self._draw_idle_eye(draw, self.left_eye_x, self.center_y)
+            self._draw_idle_eye(draw, self.right_eye_x, self.center_y)
 
         return img
+        
 
     # ---------------- DISPLAY DISPATCH ---------------- #
 
