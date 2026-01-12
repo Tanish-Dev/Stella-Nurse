@@ -1,8 +1,8 @@
 import time
-import math
 import threading
 import random
 from PIL import Image, ImageDraw
+
 
 class RoboEyes:
     def __init__(
@@ -13,11 +13,15 @@ class RoboEyes:
         fps=30,
         eye_radius=22,
         eye_spacing=40,
+        display_type="adafruit",  # 👈 NEW
     ):
         """
-        device  -> luma.lcd SPI device
+        device        -> display object
+        display_type  -> "adafruit" | "luma"
         """
         self.device = device
+        self.display_type = display_type
+
         self.width = width
         self.height = height
         self.fps = fps
@@ -109,6 +113,14 @@ class RoboEyes:
 
         return img
 
+    # ---------------- DISPLAY DISPATCH ---------------- #
+
+    def _display_frame(self, frame):
+        if self.display_type == "adafruit":
+            self.device.image(frame)
+        else:  # luma fallback
+            self.device.display(frame)
+
     # ---------------- LOOP ---------------- #
 
     def start(self):
@@ -131,6 +143,6 @@ class RoboEyes:
             self.blink_amount = max(0.1, min(1.2, self.blink_amount))
 
             frame = self._render()
-            self.device.display(frame)
+            self._display_frame(frame)
 
             time.sleep(frame_time)

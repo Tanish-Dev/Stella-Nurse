@@ -1,22 +1,26 @@
-from luma.core.interface.serial import spi
-from luma.lcd.device import st7735
+import digitalio
+import board
+from adafruit_rgb_display import st7735
 
 
 def init_display():
-    serial = spi(
-        port=0,
-        device=0,
-        gpio_DC=25,
-        gpio_RST=27,   # <-- DISABLE RESET
-        bus_speed_hz=8000000
-    )
+    spi = board.SPI()
 
-    device = st7735(
-        serial,
+    cs = digitalio.DigitalInOut(board.CE0)
+    dc = digitalio.DigitalInOut(board.D25)
+    rst = digitalio.DigitalInOut(board.D27)
+
+    disp = st7735.ST7735R(
+        spi,
+        cs=cs,
+        dc=dc,
+        rst=rst,
         width=128,
         height=128,
-        rotate=2,      # VERY common fix
-        bgr=True
+        rotation=90,
+        x_offset=0,
+        y_offset=3,     # 👈 your magic number
+        bgr=False
     )
 
-    return device
+    return disp

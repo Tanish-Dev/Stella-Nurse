@@ -1,30 +1,27 @@
 import time
-from display_driver import init_display
-from eyes import RoboEyes
+from display.display_driver import init_display
+from display.roboeyes.eyes import RoboEyes
 
-device = init_display()
+disp = init_display()
 
 eyes = RoboEyes(
-    device=device,
-    width=128,
-    height=128,
-    fps=30
+    device=disp,
+    fps=30,
+    display_type="adafruit"  # 👈 THIS IS KEY
 )
 
 eyes.start()
 
-try:
-    eyes.set_state("idle")
-    time.sleep(5)
+eyes.set_state("idle")
+time.sleep(5)
 
-    eyes.set_state("listening")
-    time.sleep(5)
+eyes.set_state("listening")
+time.sleep(5)
 
-    eyes.set_state("speaking")
-    time.sleep(5)
+eyes.set_state("speaking")
+time.sleep(5)
 
-    eyes.set_state("alert")
-    time.sleep(5)
+eyes.set_state("alert")
+time.sleep(5)
 
-finally:
-    eyes.stop()
+eyes.stop()
