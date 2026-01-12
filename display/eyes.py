@@ -262,8 +262,9 @@ class RoboEyes:
         jitter_x, jitter_y = 0, 0
         if self.micro_movement_enabled:
             # Perlin-ish noise using sum of sines
-            jitter_x = (math.sin(t * 1.5 + self.noise_seed) + math.sin(t * 3.7)) * 1.5
-            jitter_y = (math.cos(t * 2.1 + self.noise_seed) + math.cos(t * 5.3)) * 1.5
+            # REDUCED AMPLITUDE: was 1.5, now 0.5
+            jitter_x = (math.sin(t * 1.5 + self.noise_seed) + math.sin(t * 3.7)) * 0.5
+            jitter_y = (math.cos(t * 2.1 + self.noise_seed) + math.cos(t * 5.3)) * 0.5
 
         return blink_lid_offset, breath_scale, jitter_x, jitter_y
 
@@ -334,18 +335,27 @@ class RoboEyes:
         # Draw base eye
         if abs(rot) < 0.05:
             # Simple axis aligned
+            # Ensure coordinates are integers for sharper rendering
             draw.rounded_rectangle([x0, y0, x1, y1], radius=self.corner_radius, fill=color)
             
             # Eyelids (Axis aligned)
+            # Expand mask X by 2px each side to ensure coverage
+            mask_x0 = x0 - 2
+            mask_x1 = x1 + 2
+            
             if upper_lid > 0.05:
-                # Cover top portion
+                # Cover top portion - extend UPWARDS to ensure top edge is clean coverage
                 lid_h = h * upper_lid
-                draw.rectangle([x0, y0, x1, y0 + lid_h], fill="black")
+                coord_y_cut = y0 + lid_h
+                # Mask from way above (y0-10) to cut line
+                draw.rectangle([mask_x0, y0 - 10, mask_x1, coord_y_cut], fill="black")
                 
             if lower_lid > 0.05:
-                # Cover bottom portion
+                # Cover bottom portion - extend DOWNWARDS
                 lid_h = h * lower_lid
-                draw.rectangle([x0, y1 - lid_h, x1, y1], fill="black")
+                coord_y_cut = y1 - lid_h
+                # Mask from cut line to way below (y1+10)
+                draw.rectangle([mask_x0, coord_y_cut, mask_x1, y1 + 10], fill="black")
                 
         else:
             # Rotated
@@ -368,18 +378,16 @@ class RoboEyes:
                 
             draw.polygon(rot_pts, fill=color)
             
-            # Rotated Eyelids? 
-            # This gets complex fast. 
-            # Simplify: Draw rectangles rotated.
+            # Rotated Eyelids
             # Upper lid mask
             if upper_lid > 0.05:
                 lid_h = h * upper_lid
                 # Mask is the top part of the unrotated box
-                # (-w/2, -h/2) to (w/2, -h/2 + lid_h)
-                # Rotate these 4 points
+                # Extend mask width and height (upwards) to ensure coverage
+                # (-w/2 - 5, -h/2 - 10) to (w/2 + 5, -h/2 + lid_h)
                 l_pts = [
-                    (-w/2, -h/2), (w/2, -h/2),
-                    (w/2, -h/2 + lid_h), (-w/2, -h/2 + lid_h)
+                    (-w/2 - 5, -h/2 - 10), (w/2 + 5, -h/2 - 10),
+                    (w/2 + 5, -h/2 + lid_h), (-w/2 - 5, -h/2 + lid_h)
                 ]
                 r_l_pts = []
                 for px, py in l_pts:
@@ -389,10 +397,10 @@ class RoboEyes:
             # Lower lid mask
             if lower_lid > 0.05:
                 lid_h = h * lower_lid
-                # (-w/2, h/2 - lid_h) to (w/2, h/2)
+                # (-w/2 - 5, h/2 - lid_h) to (w/2 + 5, h/2 + 10)
                 l_pts = [
-                    (-w/2, h/2 - lid_h), (w/2, h/2 - lid_h),
-                    (w/2, h/2), (-w/2, h/2)
+                    (-w/2 - 5, h/2 - lid_h), (w/2 + 5, h/2 - lid_h),
+                    (w/2 + 5, h/2 + 10), (-w/2 - 5, h/2 + 10)
                 ]
                 r_l_pts = []
                 for px, py in l_pts:
