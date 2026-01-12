@@ -43,6 +43,24 @@ class RoboEyes:
         self.running = False
 
         self._lock = threading.Lock()
+        self.current_x = 0.0
+        self.current_y = 0.0
+        self.target_x = 0.0
+        self.target_y = 0.0
+
+        self.move_speed = 0.08   # lower = smoother
+        self.last_idle_move = time.time()
+
+        # Increase eye gap
+        self.eye_spacing = 52    # 👈 WAS 40, now wider
+
+        self.left_eye_x = (width // 2) - self.eye_spacing // 2
+        self.right_eye_x = (width // 2) + self.eye_spacing // 2
+
+        def _update_motion(self):
+        # Smooth interpolation (LERP)
+            self.current_x += (self.target_x - self.current_x) * self.move_speed
+            self.current_y += (self.target_y - self.current_y) * self.move_speed
 
     # ---------------- STATES ---------------- #
 
@@ -80,37 +98,41 @@ class RoboEyes:
         draw = ImageDraw.Draw(img)
 
         with self._lock:
-            bx = self.eye_offset_x
-            by = self.eye_offset_y
             state = self.state
 
-        # ---------------- IDLE ---------------- #
+        now = time.time()
+
+        # ---------- STATE LOGIC ---------- #
+
         if state == "idle":
-            if random.random() < 0.02:
-                self.look(random.randint(-6, 6), random.randint(-3, 3))
+            # Idle movement every ~2 seconds
+            if now - self.last_idle_move > 2.0:
+                self.target_x = random.uniform(-8, 8)
+                self.target_y = random.uniform(-4, 4)
+                self.last_idle_move = now
 
-            eye_y = self.center_y + by
-            left_x = self.left_eye_x + bx
-            right_x = self.right_eye_x + bx
-
-            self._draw_idle_eye(draw, left_x, eye_y)
-            self._draw_idle_eye(draw, right_x, eye_y)
-
-        # ---------------- LISTENING (placeholder) ---------------- #
         elif state == "listening":
-            eye_y = self.center_y - 4
-            self._draw_idle_eye(draw, self.left_eye_x, eye_y)
-            self._draw_idle_eye(draw, self.right_eye_x, eye_y)
+            self.target_x = 0
+            self.target_y = -10   # noticeable upward focus
 
-        # ---------------- SPEAKING (placeholder) ---------------- #
         elif state == "speaking":
-            self._draw_idle_eye(draw, self.left_eye_x, self.center_y)
-            self._draw_idle_eye(draw, self.right_eye_x, self.center_y)
+            self.target_x = 0
+            self.target_y = 0
 
-        # ---------------- ALERT (placeholder) ---------------- #
         elif state == "alert":
-            self._draw_idle_eye(draw, self.left_eye_x, self.center_y)
-            self._draw_idle_eye(draw, self.right_eye_x, self.center_y)
+            self.target_x = 0
+            self.target_y = -14   # sharp intense look
+
+        # ---------- SMOOTH MOTION ---------- #
+        self._update_motion()
+
+        eye_y = int(self.center_y + self.current_y)
+        left_x = int(self.left_eye_x + self.current_x)
+        right_x = int(self.right_eye_x + self.current_x)
+
+        # ---------- DRAW ---------- #
+        self._draw_idle_eye(draw, left_x, eye_y)
+        self._draw_idle_eye(draw, right_x, eye_y)
 
         return img
         
