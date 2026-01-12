@@ -1,3 +1,4 @@
+import time
 import digitalio
 import board
 from adafruit_rgb_display import st7735
@@ -16,8 +17,16 @@ disp = st7735.ST7735R(
     rst=reset,
     width=128,
     height=128,
-    rotation=90
+    rotation=90,
+    bgr=True
 )
 
-img = Image.new("RGB", (128,128), (255,0,0))
+# Create RED image
+img = Image.new("RGB", (128, 128), (255, 0, 0))
 disp.image(img)
+
+print("RED SCREEN SHOULD BE VISIBLE NOW")
+
+# KEEP PROGRAM ALIVE
+while True:
+    time.sleep(1)
