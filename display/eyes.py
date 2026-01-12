@@ -36,8 +36,9 @@ class RoboEyes:
         self.eye_offset_x = 0
         self.eye_offset_y = 0
 
-        self.blink_amount = 1.0
-        self.target_blink = 1.0
+        self.blink_value = 1.0
+        self.blink_target = 1.0
+        self.last_blink = time.time()
 
         self.state = "idle"
         self.running = False
@@ -48,7 +49,7 @@ class RoboEyes:
         self.target_x = 0.0
         self.target_y = 0.0
 
-        self.move_speed = 0.08   # lower = smoother
+        self.move_speed = 0.18   # lower = smoother
         self.last_idle_move = time.time()
 
         # Increase eye gap
@@ -73,23 +74,38 @@ class RoboEyes:
             self.eye_offset_x = max(-10, min(10, x))
             self.eye_offset_y = max(-6, min(6, y))
 
-    def blink(self):
-        with self._lock:
-            self.target_blink = 0.1
+    
 
+    def _update_blink(self):
+        now = time.time()
+
+        # trigger blink every 3–6 seconds
+        if now - self.last_blink > random.uniform(3.0, 6.0):
+            self.blink_target = 0.1
+            self.last_blink = now
+
+        # smooth blink animation
+        self.blink_value += (self.blink_target - self.blink_value) * 0.35
+
+        if self.blink_value < 0.15:
+            self.blink_target = 1.0
     # ---------------- DRAWING ---------------- #
 
-    def _draw_idle_eye(self, draw, x, y, size=36, radius=12, color=(0, 220, 255)):
-        half = size // 2
+    def _draw_idle_eye(self, draw, x, y, size=36, radius=12, scale=1.0, color=(0, 220, 255)):
+        scaled_size = int(size * scale)
+        scaled_radius = int(radius * scale)
+
+        half = scaled_size // 2
         bbox = [
             x - half,
             y - half,
             x + half,
             y + half
         ]
+
         draw.rounded_rectangle(
             bbox,
-            radius=radius,
+            radius=scaled_radius,
             fill=color
         )
 
@@ -131,8 +147,18 @@ class RoboEyes:
         right_x = int(self.right_eye_x + self.current_x)
 
         # ---------- DRAW ---------- #
-        self._draw_idle_eye(draw, left_x, eye_y)
-        self._draw_idle_eye(draw, right_x, eye_y)
+        direction = self.current_x / 14.0     # normalize look direction
+        direction = max(-1.0, min(1.0, direction))
+
+        left_scale = 1.0 - (direction * 0.20)
+        right_scale = 1.0 + (direction * 0.20)
+
+        left_scale = max(0.85, min(1.25, left_scale))
+        right_scale = max(0.85, min(1.25, right_scale))
+
+        # ---------- DRAW ---------- #
+        self._draw_idle_eye(draw, left_x, eye_y, scale=left_scale)
+        self._draw_idle_eye(draw, right_x, eye_y, scale=right_scale)
 
         return img
         
