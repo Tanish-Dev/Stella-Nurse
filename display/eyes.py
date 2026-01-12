@@ -41,6 +41,16 @@ class RoboEyes:
 
         self.move_speed = 0.75  # Very quick, snappy movements (Cozmo-like)
         self.last_idle_move = time.time()
+        
+        # Advanced animation parameters for ultra-fluid motion
+        self.overshoot_amount = 0.15  # Bounce past target slightly
+        self.secondary_offset_x = 0.0  # Follow-through motion
+        self.secondary_offset_y = 0.0
+        self.secondary_velocity_x = 0.0
+        self.secondary_velocity_y = 0.0
+        self.micro_movement_enabled = True  # Subtle idle wobble
+        self.breathing_enabled = False  # Breathing scale effect
+        self.breathing_phase = 0.0
 
         # Blink system - Cozmo style
         self.blink_value = 1.0
@@ -94,9 +104,36 @@ class RoboEyes:
     # ================= INTERNAL ================= #
 
     def _update_motion(self):
-        # Smooth easing with spring-like behavior
-        self.current_x += (self.target_x - self.current_x) * self.move_speed
-        self.current_y += (self.target_y - self.current_y) * self.move_speed
+        # Advanced smooth easing with overshoot for organic movement
+        diff_x = self.target_x - self.current_x
+        diff_y = self.target_y - self.current_y
+        
+        # Apply overshoot when close to target for bounce effect
+        if abs(diff_x) < 3:
+            self.current_x += diff_x * self.move_speed * (1 + self.overshoot_amount)
+        else:
+            self.current_x += diff_x * self.move_speed
+            
+        if abs(diff_y) < 3:
+            self.current_y += diff_y * self.move_speed * (1 + self.overshoot_amount)
+        else:
+            self.current_y += diff_y * self.move_speed
+        
+        # Secondary motion (follow-through) - Disney principle
+        target_secondary_x = self.current_x * 0.2
+        target_secondary_y = self.current_y * 0.2
+        
+        spring_stiffness = 0.15
+        damping = 0.82
+        
+        force_x = (target_secondary_x - self.secondary_offset_x) * spring_stiffness
+        force_y = (target_secondary_y - self.secondary_offset_y) * spring_stiffness
+        
+        self.secondary_velocity_x = (self.secondary_velocity_x + force_x) * damping
+        self.secondary_velocity_y = (self.secondary_velocity_y + force_y) * damping
+        
+        self.secondary_offset_x += self.secondary_velocity_x
+        self.secondary_offset_y += self.secondary_velocity_y
         
         # Faster smooth eye shape morphing
         self.eye_width_scale += (self.target_width_scale - self.eye_width_scale) * self.width_scale_speed
@@ -108,6 +145,29 @@ class RoboEyes:
         # Smooth color transitions
         for i in range(3):
             self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 0.08
+
+    def _add_micro_movements(self):
+        """Add subtle organic micro-movements for liveliness"""
+        if not self.micro_movement_enabled:
+            return 0.0, 0.0
+            
+        t = time.time() * 0.8
+        
+        # Multi-frequency sine waves for natural movement
+        micro_x = (math.sin(t * 1.3) * 0.4 + math.sin(t * 2.7) * 0.2) * 0.3
+        micro_y = (math.cos(t * 1.1) * 0.3 + math.cos(t * 2.3) * 0.15) * 0.3
+        
+        return micro_x, micro_y
+    
+    def _update_breathing(self):
+        """Add subtle breathing scale effect"""
+        if not self.breathing_enabled:
+            return 1.0
+            
+        self.breathing_phase += 0.02
+        # Gentle sine wave breathing (1.5 second period)
+        breath_scale = 1.0 + math.sin(self.breathing_phase) * 0.03
+        return breath_scale
 
     def _update_blink(self):
         now = time.time()
@@ -366,10 +426,17 @@ class RoboEyes:
 
         self._update_motion()
         self._update_blink()
+        
+        # Add micro-movements for organic feel
+        micro_x, micro_y = self._add_micro_movements()
+        
+        # Add breathing effect
+        breath_scale = self._update_breathing()
 
-        eye_y = int(self.center_y + self.current_y)
-        left_x = int(self.left_eye_x + self.current_x)
-        right_x = int(self.right_eye_x + self.current_x)
+        # Combine all movement layers (primary + secondary + micro)
+        eye_y = int(self.center_y + self.current_y + self.secondary_offset_y + micro_y)
+        left_x = int(self.left_eye_x + self.current_x + self.secondary_offset_x + micro_x)
+        right_x = int(self.right_eye_x + self.current_x + self.secondary_offset_x + micro_x)
 
         # Perspective scaling (depth illusion) - Cozmo style
         direction = self.current_x / 18.0
@@ -381,7 +448,10 @@ class RoboEyes:
         left_scale_x = max(0.75, min(1.4, left_scale_x))
         right_scale_x = max(0.75, min(1.4, right_scale_x))
 
-        scale_y = 1.0
+        # Apply breathing scale
+        left_scale_x *= breath_scale
+        right_scale_x *= breath_scale
+        scale_y = 1.0 * breath_scale
 
         # ================= DRAW ================= #
 

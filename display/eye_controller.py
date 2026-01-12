@@ -106,6 +106,56 @@ class EyeController:
         """
         self.eyes.set_state(emotion)
     
+    def express_sequence(self, emotions: list, durations: list):
+        """
+        Play a sequence of emotions with timing for complex expressions.
+        
+        Args:
+            emotions: List of emotion names
+            durations: List of duration in seconds for each emotion
+            
+        Example:
+            eyes.express_sequence(
+                ["surprised", "curious", "happy"],
+                [0.5, 1.0, 2.0]
+            )
+        """
+        import threading
+        
+        def play():
+            for emotion, duration in zip(emotions, durations):
+                self.eyes.set_state(emotion)
+                time.sleep(duration)
+        
+        threading.Thread(target=play, daemon=True).start()
+    
+    def enable_micro_movements(self, enable=True):
+        """
+        Enable/disable subtle organic micro-movements.
+        
+        Args:
+            enable: True to add constant subtle motion (more lifelike)
+        """
+        self.eyes.micro_movement_enabled = enable
+    
+    def enable_breathing(self, enable=True):
+        """
+        Enable/disable subtle breathing scale effect.
+        
+        Args:
+            enable: True to add gentle breathing animation
+        """
+        self.eyes.breathing_enabled = enable
+    
+    def set_movement_speed(self, speed: float):
+        """
+        Adjust eye movement speed.
+        
+        Args:
+            speed: 0.3 (slow/smooth) to 1.0 (instant). Default 0.75
+        """
+        self.eyes.move_speed = max(0.1, min(1.0, speed))
+    
     def stop(self):
         """Stop the animation loop"""
         self.eyes.stop()
