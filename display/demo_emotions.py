@@ -41,9 +41,9 @@ def main():
     # Emotion showcase - Key emotions only with clear differences
     demos = [
         ("idle", 6, "😊 IDLE", "Gentle wandering, normal eyes"),
-        ("happy", 6, "😄 HAPPY", "Squinted joy, wider eyes"),
+        ("happy", 6, "😄 HAPPY", "Arc-shaped crescent eyes (like smiling)"),
         ("sad", 6, "😢 SAD", "Very droopy and narrow"),
-        ("surprised", 6, "😲 SURPRISED", "Very wide with big pupils"),
+        ("surprised", 6, "😲 SURPRISED", "Very wide open"),
         ("thinking", 6, "💭 THINKING", "Looking up and away"),
         ("listening", 6, "👂 LISTENING", "Focused upward, attentive"),
         ("alert", 6, "⚠️ ALERT", "Wide, intense, orange glow"),

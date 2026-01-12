@@ -17,9 +17,9 @@ try:
     # Test key different emotions
     tests = [
         ("idle", "Normal eyes, gentle wander"),
-        ("happy", "SQUINTED wide - notice the shape!"),
+        ("happy", "ARC-SHAPED like crescents/smiles!"),
         ("sad", "VERY droopy and narrow"),
-        ("surprised", "VERY WIDE with pupils"),
+        ("surprised", "VERY WIDE open"),
         ("thinking", "Looking away up-right"),
         ("sleepy", "Almost closed, very droopy"),
     ]
@@ -31,7 +31,8 @@ try:
     
     print("\n✅ Done! Notice:")
     print("   - Smoother movement (less jittery)")
-    print("   - More distinct shapes between emotions")
+    print("   - Happy eyes are thin arcs (like crescents)")
+    print("   - NO pupils anywhere")
     print("   - Mostly blue (except alert/angry/love)")
     print("   - Better corner rounding")
     
