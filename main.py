@@ -10,7 +10,7 @@ from sensors.temperature import TemperatureSensor
 from voice.elevenlabs import VoiceSystem
 from wakeword.listener import WakeWordListener
 from ai.langchain_agent import NurseAgent
-from display.face import FaceDisplay
+from display.eyes import FaceDisplay
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
