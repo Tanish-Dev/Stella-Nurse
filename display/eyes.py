@@ -57,10 +57,10 @@ class RoboEyes:
         self.left_eye_x = (width // 2) - self.eye_spacing // 2
         self.right_eye_x = (width // 2) + self.eye_spacing // 2
 
-        def _update_motion(self):
-        # Smooth interpolation (LERP)
-            self.current_x += (self.target_x - self.current_x) * self.move_speed
-            self.current_y += (self.target_y - self.current_y) * self.move_speed
+    def _update_motion(self):
+    # Smooth interpolation (LERP)
+        self.current_x += (self.target_x - self.current_x) * self.move_speed
+        self.current_y += (self.target_y - self.current_y) * self.move_speed
 
     # ---------------- STATES ---------------- #
 
