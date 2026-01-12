@@ -95,6 +95,10 @@ class EyeController:
     def focused(self):
         """Alert, attentive, slightly narrowed"""
         self.eyes.set_state("focused")
+
+    def suspicious(self):
+        """Squinting, suspicious look"""
+        self.eyes.set_state("suspicious")
     
     # ===== Utility Methods ===== #
     

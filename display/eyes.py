@@ -4,6 +4,37 @@ import random
 import math
 from PIL import Image, ImageDraw
 
+class SpringScalar:
+    """
+    Spring physics solver for a single scalar value.
+    Simulates a damped harmonic oscillator for organic movement.
+    """
+    def __init__(self, value, stiffness=120.0, damping=14.0, mass=1.0):
+        self.value = value
+        self.target = value
+        self.velocity = 0.0
+        self.stiffness = stiffness  # Higher = tighter/faster spring
+        self.damping = damping      # Higher = less oscillation/friction
+        self.mass = mass            # Higher = heavier/slower
+
+    def update(self, dt):
+        # F = -kx - cv
+        force = (self.target - self.value) * self.stiffness
+        force -= self.velocity * self.damping
+        
+        accel = force / self.mass
+        self.velocity += accel * dt
+        self.value += self.velocity * dt
+        
+        return self.value
+
+    def set_target(self, target):
+        self.target = target
+
+    def snap_to(self, value):
+        self.value = value
+        self.target = value
+        self.velocity = 0.0
 
 class RoboEyes:
     def __init__(
@@ -22,70 +53,58 @@ class RoboEyes:
         self.width = width
         self.height = height
         self.fps = fps
+        self.dt = 1.0 / fps
 
         # Eye geometry
         self.eye_size = eye_size
         self.eye_spacing = eye_spacing
         self.corner_radius = 12
-        self.base_height_scale = 1.15  # Slightly taller eyes overall
-
+        
         self.center_y = height // 2
-        self.left_eye_x = (width // 2) - eye_spacing // 2
-        self.right_eye_x = (width // 2) + eye_spacing // 2
+        self.left_eye_x_base = (width // 2) - eye_spacing // 2
+        self.right_eye_x_base = (width // 2) + eye_spacing // 2
 
-        # Motion (current vs target)
-        self.current_x = 0.0
-        self.current_y = 0.0
-        self.target_x = 0.0
-        self.target_y = 0.0
-
-        self.move_speed = 0.75  # Very quick, snappy movements (Cozmo-like)
-        self.last_idle_move = time.time()
+        # ================= PHYSICS ENGINE (SPRINGS) ================= #
+        # Stiffness 120, Damping 12 is a good "snappy but bouncy" feel
+        spring_config = {'stiffness': 180.0, 'damping': 12.0, 'mass': 1.0}
+        smooth_config = {'stiffness': 100.0, 'damping': 10.0, 'mass': 1.2}
         
-        # Advanced animation parameters for ultra-fluid motion
-        self.overshoot_amount = 0.15  # Bounce past target slightly
-        self.secondary_offset_x = 0.0  # Follow-through motion
-        self.secondary_offset_y = 0.0
-        self.secondary_velocity_x = 0.0
-        self.secondary_velocity_y = 0.0
-        self.micro_movement_enabled = True  # Subtle idle wobble
-        self.breathing_enabled = False  # Breathing scale effect
-        self.breathing_phase = 0.0
-
-        # Blink system - Cozmo style
-        self.blink_value = 1.0
-        self.blink_target = 1.0
-        self.last_blink = time.time()
-        self.blink_speed = 0.45
-        self.next_blink_time = time.time() + random.uniform(2.0, 5.0)
-        self.double_blink = False  # For occasional double blinks
-
-        # Emotion-specific parameters
-        self.eye_width_scale = 1.0
-        self.eye_height_scale = 1.0
-        self.target_width_scale = 1.0
-        self.target_height_scale = 1.0
+        # Position
+        self.spring_x = SpringScalar(0.0, **spring_config)
+        self.spring_y = SpringScalar(0.0, **spring_config)
         
-        self.width_scale_speed = 0.18  # Faster, smoother scaling
-        self.height_scale_speed = 0.18  # Faster, smoother scaling
+        # Scale (Width/Height)
+        self.spring_width = SpringScalar(1.0, **spring_config)
+        self.spring_height = SpringScalar(1.0, **spring_config)
         
-        self.eye_angle = 0.0  # For tilt
-        self.target_angle = 0.0
+        # Rotation
+        self.spring_angle = SpringScalar(0.0, **smooth_config)
         
-        self.eye_color = (0, 220, 255)  # Cyan
-        self.target_color = (0, 220, 255)
+        # Eyelids (0.0 = open, 1.0 = fully closed)
+        self.spring_upper_lid = SpringScalar(0.0, **spring_config)
+        self.spring_lower_lid = SpringScalar(0.0, **spring_config)
+        
+        # Color (RGB)
         self.current_color = [0, 220, 255]
+        self.target_color = [0, 220, 255]
 
-        # Animation state
-        self.animation_time = 0.0
-        self.animation_phase = 0.0
+        # ================= ANIMATION PARAMS ================= #
+        self.micro_movement_enabled = True
+        self.breathing_enabled = True
+        self.breathing_phase = 0.0
+        
+        self.noise_seed = random.random() * 1000
+        self.last_idle_move = time.time()
+
+        # Blink system
+        self.next_blink_time = time.time() + random.uniform(2.0, 5.0)
+        self.is_blinking = False
+        self.blink_duration = 0.15 # seconds
+        self.blink_start_time = 0
 
         # State
         self.state = "idle"
-        self.previous_state = "idle"
-        self.state_transition_time = 0.0
         self.running = False
-
         self._lock = threading.Lock()
 
     # ================= PUBLIC API ================= #
@@ -93,6 +112,7 @@ class RoboEyes:
     def set_state(self, state):
         with self._lock:
             self.state = state
+            self._apply_state_targets(state)
 
     def start(self):
         self.running = True
@@ -101,382 +121,295 @@ class RoboEyes:
     def stop(self):
         self.running = False
 
-    # ================= INTERNAL ================= #
+    # ================= LOGIC ================= #
 
-    def _update_motion(self):
-        # Advanced smooth easing with overshoot for organic movement
-        diff_x = self.target_x - self.current_x
-        diff_y = self.target_y - self.current_y
-        
-        # Apply overshoot when close to target for bounce effect
-        if abs(diff_x) < 3:
-            self.current_x += diff_x * self.move_speed * (1 + self.overshoot_amount)
-        else:
-            self.current_x += diff_x * self.move_speed
-            
-        if abs(diff_y) < 3:
-            self.current_y += diff_y * self.move_speed * (1 + self.overshoot_amount)
-        else:
-            self.current_y += diff_y * self.move_speed
-        
-        # Secondary motion (follow-through) - Disney principle
-        target_secondary_x = self.current_x * 0.2
-        target_secondary_y = self.current_y * 0.2
-        
-        spring_stiffness = 0.15
-        damping = 0.82
-        
-        force_x = (target_secondary_x - self.secondary_offset_x) * spring_stiffness
-        force_y = (target_secondary_y - self.secondary_offset_y) * spring_stiffness
-        
-        self.secondary_velocity_x = (self.secondary_velocity_x + force_x) * damping
-        self.secondary_velocity_y = (self.secondary_velocity_y + force_y) * damping
-        
-        self.secondary_offset_x += self.secondary_velocity_x
-        self.secondary_offset_y += self.secondary_velocity_y
-        
-        # Faster smooth eye shape morphing
-        self.eye_width_scale += (self.target_width_scale - self.eye_width_scale) * self.width_scale_speed
-        self.eye_height_scale += (self.target_height_scale - self.eye_height_scale) * self.height_scale_speed
-        
-        # Smooth angle transitions
-        self.eye_angle += (self.target_angle - self.eye_angle) * 0.12
-        
-        # Smooth color transitions
-        for i in range(3):
-            self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 0.08
-
-    def _add_micro_movements(self):
-        """Add subtle organic micro-movements for liveliness"""
-        if not self.micro_movement_enabled:
-            return 0.0, 0.0
-            
-        t = time.time() * 0.8
-        
-        # Multi-frequency sine waves for natural movement
-        micro_x = (math.sin(t * 1.3) * 0.4 + math.sin(t * 2.7) * 0.2) * 0.3
-        micro_y = (math.cos(t * 1.1) * 0.3 + math.cos(t * 2.3) * 0.15) * 0.3
-        
-        return micro_x, micro_y
-    
-    def _update_breathing(self):
-        """Add subtle breathing scale effect"""
-        if not self.breathing_enabled:
-            return 1.0
-            
-        self.breathing_phase += 0.02
-        # Gentle sine wave breathing (1.5 second period)
-        breath_scale = 1.0 + math.sin(self.breathing_phase) * 0.03
-        return breath_scale
-
-    def _update_blink(self):
-        now = time.time()
-
-        # Cozmo-style natural blinking with variation
-        if now >= self.next_blink_time and self.blink_value > 0.95:
-            # Start a blink
-            self.blink_target = 0.0
-            self.blink_speed = 0.85  # Very fast blink down (Cozmo-like)
-            self.last_blink = now
-            
-            # 20% chance of double blink (Cozmo does this!)
-            if random.random() < 0.2:
-                self.double_blink = True
-        
-        # Animate blink
-        self.blink_value += (self.blink_target - self.blink_value) * self.blink_speed
-
-        # Blink finished going down
-        if self.blink_value < 0.05 and self.blink_target < 0.5:
-            self.blink_target = 1.0
-            self.blink_speed = 0.4  # Slower blink up
-        
-        # Blink finished going up
-        if self.blink_value > 0.95 and self.blink_target > 0.5:
-            if self.double_blink:
-                # Quick second blink!
-                self.blink_target = 0.0
-                self.blink_speed = 0.85
-                self.double_blink = False
-            else:
-                # Schedule next blink with natural variation (2-6 seconds)
-                self.next_blink_time = now + random.uniform(2.0, 6.0)
-
-    def _draw_heart(self, draw, x, y, size, color):
-        """Draw a heart shape for love emotion"""
-        # Heart is made of two circles on top and a triangle on bottom
-        w = size
-        h = size
-        
-        # Draw filled heart using polygon approximation
-        points = []
-        # Top left curve
-        for angle in range(180, 360, 10):
-            px = x - w//4 + int(w//4 * math.cos(math.radians(angle)))
-            py = y - h//4 + int(h//4 * math.sin(math.radians(angle)))
-            points.append((px, py))
-        # Top right curve  
-        for angle in range(180, 360, 10):
-            px = x + w//4 + int(w//4 * math.cos(math.radians(angle)))
-            py = y - h//4 + int(h//4 * math.sin(math.radians(angle)))
-            points.append((px, py))
-        # Bottom point
-        points.append((x, y + h//2))
-        
-        draw.polygon(points, fill=color)
-
-    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True, is_heart=False):
-        """Draw a single eye - no pupils, just solid shapes"""
-        
-        # Special case: draw heart for love emotion
-        if is_heart:
-            size = int(self.eye_size * scale_x * self.eye_width_scale)
-            self._draw_heart(draw, x, y, size, color)
-            return
-        
-        size_x = int(self.eye_size * scale_x * self.eye_width_scale)
-        size_y = int(self.eye_size * scale_y * self.eye_height_scale * self.base_height_scale * self.blink_value)
-
-        half_w = size_x // 2
-        half_h = size_y // 2
-
-        # Main eye shape
-        if abs(angle) > 0.05:  # Only use polygon for significant angles
-            # For angled eyes (emotions like angry), create polygon
-            cos_a = math.cos(angle)
-            sin_a = math.sin(angle)
-            
-            # Create rotated rectangle corners
-            corners = []
-            for dx, dy in [(-half_w, -half_h), (half_w, -half_h), 
-                          (half_w, half_h), (-half_w, half_h)]:
-                rx = x + dx * cos_a - dy * sin_a
-                ry = y + dx * sin_a + dy * cos_a
-                corners.append((rx, ry))
-            
-            # Draw as polygon for rotation
-            draw.polygon(corners, fill=color)
-        else:
-            # Standard rounded rectangle for most emotions
-            bbox = [x - half_w, y - half_h, x + half_w, y + half_h]
-            # Ensure minimum radius for smooth corners
-            radius = max(6, int(self.corner_radius * scale_x * min(self.eye_width_scale, 1.0)))
-            radius = min(radius, half_w, half_h)  # Don't exceed eye size
-            draw.rounded_rectangle(bbox, radius=radius, fill=color)
-
-    def _render(self):
-        img = Image.new("RGB", (self.width, self.height), "black")
-        draw = ImageDraw.Draw(img)
-
-        with self._lock:
-            state = self.state
-            if state != self.previous_state:
-                self.state_transition_time = time.time()
-                self.previous_state = state
-
-        now = time.time()
-        self.animation_time = now
-        self.animation_phase += 0.08
-
-        # ================= STATE LOGIC - Cozmo/EMO Style ================= #
+    def _apply_state_targets(self, state):
+        """Map state names to physical target parameters"""
+        # Defaults
+        tx, ty = 0.0, 0.0
+        tw, th = 1.0, 1.0
+        tang = 0.0
+        tul, tll = 0.0, 0.0 # Upper lid, Lower lid
+        col = (0, 220, 255) # Default Cyan
 
         if state == "idle":
-            # Gentle wandering with occasional micro-movements
-            if now - self.last_idle_move > 2.5:
-                self.target_x = random.uniform(-10, 10)
-                self.target_y = random.uniform(-4, 4)
-                self.last_idle_move = now
+            col = (0, 200, 255)
             
-            self.target_width_scale = 1.0
-            self.target_height_scale = 1.0
-            self.target_angle = 0.0
-            self.target_color = (0, 200, 255)  # Blue
-
         elif state == "happy":
-            # Wide, thin happy eyes
-            self.target_x = 0
-            self.target_y = -5  # Slightly up for happy look
-            self.target_width_scale = 1.3  # Wide
-            self.target_height_scale = 0.4  # Thin
-            self.target_angle = 0.0
-            self.target_color = (50, 255, 150)  # Bright happy blue-green
-
+            ty = -5
+            tw, th = 1.1, 0.9
+            tll = 0.55  # Push lower lid up significantly (cheek smile)
+            col = (50, 255, 150)
+            
         elif state == "sad":
-            # Droopy eyes, looking down, very narrow
-            self.target_x = 0
-            self.target_y = 18
-            self.target_width_scale = 0.85
-            self.target_height_scale = 0.45  # Very droopy
-            self.target_angle = 0.0
-            self.target_color = (0, 180, 240)  # Dimmer blue
-
+            ty = 10
+            tw, th = 0.95, 0.9
+            tul = 0.5  # Droop upper lid
+            tang = 0.1 # Slight droop tilt outer
+            col = (0, 100, 255)
+            
         elif state == "angry":
-            # Very narrowed eyes, intense
-            self.target_x = 0
-            self.target_y = -6
-            self.target_width_scale = 1.3
-            self.target_height_scale = 0.3  # Very narrow, no pulsing
-            self.target_angle = -0.2  # Angry tilt
-            self.target_color = (255, 50, 50)  # Red - one of few colored
-
+            ty = -5
+            th = 0.8
+            tul = 0.65 # Heavy upper browser
+            tang = -0.25 # Inward tilt
+            col = (255, 30, 30)
+            
         elif state == "surprised":
-            # Very wide open eyes
-            self.target_x = 0
-            self.target_y = -8
-            self.target_width_scale = 1.4  # Much wider
-            self.target_height_scale = 1.5  # Much taller
-            self.target_angle = 0.0
-            self.target_color = (200, 240, 255)  # Bright blue-white
-
-        elif state == "curious":
-            # Tilted, slightly wider
-            self.target_x = 0
-            self.target_y = -3
-            self.target_width_scale = 1.15
-            self.target_height_scale = 1.2
-            self.target_angle = 0.0
-            self.target_color = (0, 200, 255)  # Keep blue
-
-        elif state == "focused":
-            # Attentive, alert, slightly narrowed
-            self.target_x = 0
-            self.target_y = 0
-            self.target_width_scale = 0.95  # Slightly narrower
-            self.target_height_scale = 1.25  # Taller, alert
-            self.target_angle = 0.0
-            self.target_color = (20, 200, 255)  # Sharp blue
-
-        elif state == "thinking":
-            # Eyes look up and to the side
-            self.target_x = 12
-            self.target_y = -8
-            self.target_width_scale = 0.9
-            self.target_height_scale = 0.95
-            self.target_angle = 0.0
-            self.target_color = (0, 180, 240)  # Dimmer blue
-
-        elif state == "listening":
-            # Focused upward, slightly wider and taller
-            self.target_x = 0
-            self.target_y = -18
-            self.target_width_scale = 1.1
-            self.target_height_scale = 1.2
-            self.target_angle = 0.0
-            self.target_color = (0, 220, 255)  # Bright blue
-
-        elif state == "speaking":
-            # Normal size, no movement
-            self.target_x = 0
-            self.target_y = 0
-            self.target_width_scale = 1.0
-            self.target_height_scale = 1.0
-            self.target_angle = 0.0
-            self.target_color = (0, 200, 255)  # Blue
-
-        elif state == "alert":
-            # Wide open, looking straight, focused
-            self.target_x = 0
-            self.target_y = -12
-            self.target_width_scale = 1.2
-            self.target_height_scale = 1.35
-            self.target_angle = 0.0
-            self.target_color = (255, 160, 0)  # Orange - important alert color
-
-        elif state == "concerned":
-            # Worried, drooped, narrow
-            self.target_x = 0
-            self.target_y = 8
-            self.target_width_scale = 0.9
-            self.target_height_scale = 0.7
-            self.target_angle = 0.0
-            self.target_color = (0, 180, 240)  # Dimmer blue
-
+            ty = -5
+            tw, th = 1.25, 1.3
+            tul, tll = -0.1, -0.1 # Widen eyes beyond normal
+            col = (200, 240, 255)
+            
         elif state == "sleepy":
-            # Very droopy and narrow
-            self.target_x = 0
-            self.target_y = 20
-            self.target_width_scale = 0.8
-            self.target_height_scale = 0.35  # Very droopy
-            self.target_angle = 0.0
-            self.target_color = (0, 150, 200)  # Dim blue
-            # Override blink timing for sleepy
-            if now - self.last_blink > 1.5:
-                self.blink_target = 0.05
-                self.last_blink = now
-
+            ty = 10
+            tul = 0.75 # Heavy drooping
+            th = 0.8
+            col = (0, 120, 180)
+            
+        elif state == "curious":
+            ty = -5
+            tw = 1.1
+            tul = 0.1
+            tang = 0.05
+            col = (0, 210, 255)
+            
+        elif state == "suspicious": # New state
+            ty = 0
+            th = 0.6
+            tul = 0.4
+            tll = 0.4
+            col = (255, 200, 0)
+            
         elif state == "excited":
-            # Wide eyes, very energetic
-            self.target_x = 0
-            self.target_y = -5
-            self.target_width_scale = 1.3
-            self.target_height_scale = 1.25
-            self.target_angle = 0.0
-            self.target_color = (100, 220, 255)  # Bright blue
-
-        elif state == "love":
-            # Heart-shaped eyes!
-            self.target_x = 0
-            self.target_y = 0
-            self.target_width_scale = 1.1
-            self.target_height_scale = 1.1  # Hearts maintain proportion
-            self.target_angle = 0.0
-            self.target_color = (255, 80, 120)  # Red-pink for hearts
-
-        # ================= ANIMATION ================= #
-
-        self._update_motion()
-        self._update_blink()
+            ty = -8
+            tw, th = 1.2, 1.2
+            tul, tll = -0.05, 0.1 # Wide but active
+            col = (100, 255, 255)
+            
+        elif state == "love": # Handle heart in render separately usually, but here we prep
+            tw, th = 1.1, 1.1
+            col = (255, 50, 150)
         
-        # Add micro-movements for organic feel
-        micro_x, micro_y = self._add_micro_movements()
+        # Apply targets
+        self.spring_x.set_target(tx)
+        self.spring_y.set_target(ty)
+        self.spring_width.set_target(tw)
+        self.spring_height.set_target(th)
+        self.spring_angle.set_target(tang)
+        self.spring_upper_lid.set_target(tul)
+        self.spring_lower_lid.set_target(tll)
+        self.target_color = list(col)
+
+    def _update_physics(self):
+        dt = self.dt
         
-        # Add breathing effect
-        breath_scale = self._update_breathing()
+        # Step springs
+        self.spring_x.update(dt)
+        self.spring_y.update(dt)
+        self.spring_width.update(dt)
+        self.spring_height.update(dt)
+        self.spring_angle.update(dt)
+        self.spring_upper_lid.update(dt)
+        self.spring_lower_lid.update(dt)
 
-        # Combine all movement layers (primary + secondary + micro)
-        eye_y = int(self.center_y + self.current_y + self.secondary_offset_y + micro_y)
-        left_x = int(self.left_eye_x + self.current_x + self.secondary_offset_x + micro_x)
-        right_x = int(self.right_eye_x + self.current_x + self.secondary_offset_x + micro_x)
+        # Smooth color transition
+        for i in range(3):
+            self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 10.0 * dt
 
-        # Perspective scaling (depth illusion) - Cozmo style
-        direction = self.current_x / 18.0
-        direction = max(-1.0, min(1.0, direction))
-
-        left_scale_x = 1.0 - (direction * 0.25)
-        right_scale_x = 1.0 + (direction * 0.25)
-
-        left_scale_x = max(0.75, min(1.4, left_scale_x))
-        right_scale_x = max(0.75, min(1.4, right_scale_x))
-
-        # Apply breathing scale
-        left_scale_x *= breath_scale
-        right_scale_x *= breath_scale
-        scale_y = 1.0 * breath_scale
-
-        # ================= DRAW ================= #
-
-        color = tuple(int(c) for c in self.current_color)
+    def _update_behaviors(self):
+        """High level behaviors like blinking, breathing, idle movements"""
+        t = time.time()
         
-        # Check if we should draw hearts (love emotion)
-        is_heart = (state == "love")
+        # 1. Blinking (Independent of state, effectively modulates upper lid)
+        if t > self.next_blink_time and not self.is_blinking:
+            self.is_blinking = True
+            self.blink_start_time = t
+            self.blink_duration = random.uniform(0.12, 0.18)
+            
+        # Calc blink offset
+        blink_lid_offset = 0.0
+        if self.is_blinking:
+            progress = (t - self.blink_start_time) / self.blink_duration
+            if progress < 0.5:
+                # Closing
+                blink_lid_offset = math.sin(progress * math.pi) * 2.5 # multiplier for full closure
+            else:
+                # Opening
+                blink_lid_offset = math.sin(progress * math.pi) * 2.5
+            
+            if progress >= 1.0:
+                self.is_blinking = False
+                self.next_blink_time = t + random.uniform(1.5, 6.0)
+
+        # 2. Idle wandering
+        if self.state == "idle" and self.micro_movement_enabled:
+            if t - self.last_idle_move > 2.0:
+                # Pick a random point near center
+                tgt_x = random.uniform(-15, 15)
+                tgt_y = random.uniform(-8, 8)
+                self.spring_x.set_target(tgt_x)
+                self.spring_y.set_target(tgt_y)
+                self.last_idle_move = t + random.uniform(0.0, 1.0) # slight random delay
+
+        # 3. Breathing (Oscillation of size)
+        breath_scale = 1.0
+        if self.breathing_enabled:
+            self.breathing_phase += 3.0 * self.dt # speed
+            breath_scale = 1.0 + math.sin(self.breathing_phase) * 0.025
+            
+        # 4. Micro-movements (Jitter)
+        jitter_x, jitter_y = 0, 0
+        if self.micro_movement_enabled:
+            # Perlin-ish noise using sum of sines
+            jitter_x = (math.sin(t * 1.5 + self.noise_seed) + math.sin(t * 3.7)) * 1.5
+            jitter_y = (math.cos(t * 2.1 + self.noise_seed) + math.cos(t * 5.3)) * 1.5
+
+        return blink_lid_offset, breath_scale, jitter_x, jitter_y
+
+    def _render(self):
+        blink_offset, breath_scale, jitter_x, jitter_y = self._update_behaviors()
+        self._update_physics()
+
+        img = Image.new("RGB", (self.width, self.height), "black")
+        draw = ImageDraw.Draw(img)
         
-        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True, is_heart=is_heart)
-        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False, is_heart=is_heart)
+        # Resolve final render values
+        val_x = self.spring_x.value + jitter_x
+        val_y = self.spring_y.value + jitter_y
+        val_w = self.spring_width.value * breath_scale
+        val_h = self.spring_height.value * breath_scale
+        val_rot = self.spring_angle.value
+        
+        # Eyelids (0-1 range + blink)
+        val_ul = max(0.0, min(1.0, self.spring_upper_lid.value + blink_offset))
+        val_ll = max(0.0, min(1.0, self.spring_lower_lid.value)) # Lower lid doesn't blink usually
+
+        col = tuple(int(c) for c in self.current_color)
+
+        # Draw eyes
+        self._draw_eye(draw, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True)
+        self._draw_eye(draw, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False)
 
         return img
 
-    # ================= DISPLAY ================= #
-
-    def _display_frame(self, frame):
-        if self.display_type == "adafruit":
-            self.device.image(frame)
+    def _draw_eye(self, draw, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left):
+        # Calculate depth perspective
+        # If looking right (off_x > 0), right eye gets bigger, left gets smaller
+        # Max shift is ~20px
+        
+        perspective = (off_x / 50.0) # -0.4 to 0.4
+        if is_left:
+            scale_local = 1.0 - (perspective * 0.3)
         else:
-            self.device.display(frame)
+            scale_local = 1.0 + (perspective * 0.3)
+            
+        # Final geometry
+        w = self.eye_size * scale_w * scale_local
+        h = self.eye_size * scale_h * 1.2 # Base height factor
+        
+        cx = base_x + off_x
+        cy = self.center_y + off_y
+        
+        # Bounding box
+        x0 = cx - w/2
+        y0 = cy - h/2
+        x1 = cx + w/2
+        y1 = cy + h/2
+        
+        # Rotation handling
+        # We draw a rotated rounded rect by drawing a high-res polygon or rotating the context?
+        # PIL rotation is slow/complex for just one shape. 
+        # Better: Draw huge rect, rotate points manually.
+        
+        # 1. Create base rounded rect points
+        # Approximation: simple rect if small, nice rounded if large?
+        # Let's use standard pillow rounded rect, BUT we have eyelids to handle.
+        # Handling eyelids + rotation is tricky with basic PIL shapes.
+        # Strategy: Draw the FULL eye shape (rounded rect), then draw BLACK rectangles for eyelids over it relative to rotation.
+        
+        # BUT if the eye rotates, the eyelids ("gravity") usually stay relative to the eye or the face?
+        # For simple emotions (angry), lids follow the eye tilt.
+        
+        # Draw base eye
+        if abs(rot) < 0.05:
+            # Simple axis aligned
+            draw.rounded_rectangle([x0, y0, x1, y1], radius=self.corner_radius, fill=color)
+            
+            # Eyelids (Axis aligned)
+            if upper_lid > 0.05:
+                # Cover top portion
+                lid_h = h * upper_lid
+                draw.rectangle([x0, y0, x1, y0 + lid_h], fill="black")
+                
+            if lower_lid > 0.05:
+                # Cover bottom portion
+                lid_h = h * lower_lid
+                draw.rectangle([x0, y1 - lid_h, x1, y1], fill="black")
+                
+        else:
+            # Rotated
+            # Center of rotation
+            # Rotate 4 corners
+            pts = [
+                (-w/2, -h/2), (w/2, -h/2),
+                (w/2, h/2), (-w/2, h/2)
+            ]
+            
+            c = math.cos(rot)
+            s = math.sin(rot)
+            
+            rot_pts = []
+            for px, py in pts:
+                rot_pts.append((
+                    cx + px*c - py*s,
+                    cy + px*s + py*c
+                ))
+                
+            draw.polygon(rot_pts, fill=color)
+            
+            # Rotated Eyelids? 
+            # This gets complex fast. 
+            # Simplify: Draw rectangles rotated.
+            # Upper lid mask
+            if upper_lid > 0.05:
+                lid_h = h * upper_lid
+                # Mask is the top part of the unrotated box
+                # (-w/2, -h/2) to (w/2, -h/2 + lid_h)
+                # Rotate these 4 points
+                l_pts = [
+                    (-w/2, -h/2), (w/2, -h/2),
+                    (w/2, -h/2 + lid_h), (-w/2, -h/2 + lid_h)
+                ]
+                r_l_pts = []
+                for px, py in l_pts:
+                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
+                draw.polygon(r_l_pts, fill="black")
+
+            # Lower lid mask
+            if lower_lid > 0.05:
+                lid_h = h * lower_lid
+                # (-w/2, h/2 - lid_h) to (w/2, h/2)
+                l_pts = [
+                    (-w/2, h/2 - lid_h), (w/2, h/2 - lid_h),
+                    (w/2, h/2), (-w/2, h/2)
+                ]
+                r_l_pts = []
+                for px, py in l_pts:
+                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
+                draw.polygon(r_l_pts, fill="black")
+
 
     def _loop(self):
-        frame_time = 1 / self.fps
-
         while self.running:
+            start_t = time.time()
             frame = self._render()
-            self._display_frame(frame)
-            time.sleep(frame_time)
+            
+            if self.display_type == "adafruit":
+                self.device.image(frame)
+            else:
+                self.device.display(frame)
+                
+            elapsed = time.time() - start_t
+            sleep_t = max(0, self.dt - elapsed)
+            time.sleep(sleep_t)
