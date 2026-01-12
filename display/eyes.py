@@ -36,6 +36,9 @@ class RoboEyes:
         self.eye_offset_x = 0
         self.eye_offset_y = 0
 
+        self.blink_amount = 1.0
+        self.target_blink = 1.0
+
         self.blink_value = 1.0
         self.blink_target = 1.0
         self.last_blink = time.time()
@@ -49,7 +52,7 @@ class RoboEyes:
         self.target_x = 0.0
         self.target_y = 0.0
 
-        self.move_speed = 0.18   # lower = smoother
+        self.move_speed = 0.22   # lower = smoother
         self.last_idle_move = time.time()
 
         # Increase eye gap
@@ -74,8 +77,11 @@ class RoboEyes:
             self.eye_offset_x = max(-10, min(10, x))
             self.eye_offset_y = max(-6, min(6, y))
 
-    
+    def blink(self):
+        with self._lock:
+            self.target_blink = 0.1
 
+            
     def _update_blink(self):
         now = time.time()
 
@@ -89,18 +95,22 @@ class RoboEyes:
 
         if self.blink_value < 0.15:
             self.blink_target = 1.0
+
     # ---------------- DRAWING ---------------- #
 
     def _draw_idle_eye(self, draw, x, y, size=36, radius=12, scale=1.0, color=(0, 220, 255)):
         scaled_size = int(size * scale)
+        scaled_height = int(scaled_size * self.blink_value)
         scaled_radius = int(radius * scale)
 
-        half = scaled_size // 2
+        half_w = scaled_size // 2
+        half_h = scaled_height // 2
+
         bbox = [
-            x - half,
-            y - half,
-            x + half,
-            y + half
+            x - half_w,
+            y - half_h,
+            x + half_w,
+            y + half_h
         ]
 
         draw.rounded_rectangle(
@@ -141,6 +151,9 @@ class RoboEyes:
 
         # ---------- SMOOTH MOTION ---------- #
         self._update_motion()
+
+        self._update_motion()
+        self._update_blink()
 
         eye_y = int(self.center_y + self.current_y)
         left_x = int(self.left_eye_x + self.current_x)
