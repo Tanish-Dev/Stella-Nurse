@@ -1,5 +1,5 @@
 from PIL import Image
-from display.display_driver import init_display
+from display_driver import init_display
 import time
 
 device = init_display()
