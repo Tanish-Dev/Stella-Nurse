@@ -12,7 +12,7 @@ class RoboEyes:
         height=128,
         fps=30,
         eye_radius=22,
-        eye_spacing=40,
+        eye_spacing=60,
         display_type="adafruit",  # 👈 NEW
     ):
         """
