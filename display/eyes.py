@@ -39,7 +39,7 @@ class RoboEyes:
         self.target_x = 0.0
         self.target_y = 0.0
 
-        self.move_speed = 0.18  # slower, smoother
+        self.move_speed = 0.55  # Quick, snappy movements (Cozmo-like)
         self.last_idle_move = time.time()
 
         # Blink system - Cozmo style
@@ -162,13 +162,36 @@ class RoboEyes:
         
         draw.polygon(points, fill=color)
 
-    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True, is_heart=False):
+    def _draw_crescent(self, draw, x, y, width, color):
+        """Draw an upward-curved crescent for happy eyes"""
+        # Draw a crescent by using a thick arc
+        thickness = int(width * 0.15)  # Arc thickness
+        
+        # Create crescent as a partial ellipse
+        # Draw outer arc
+        bbox_outer = [x - width//2, y - width//4, x + width//2, y + width//4]
+        # Draw inner arc to create hollow effect (making it look like a smile)
+        bbox_inner = [x - width//2 + thickness, y - width//4 + thickness, 
+                      x + width//2 - thickness, y + width//4 - thickness]
+        
+        # For a simpler filled crescent, draw a chord
+        # We'll draw an ellipse and then cover part of it
+        bbox = [x - width//2, y - width//3, x + width//2, y + width//6]
+        draw.ellipse(bbox, fill=color)
+
+    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True, is_heart=False, is_crescent=False):
         """Draw a single eye - no pupils, just solid shapes"""
         
         # Special case: draw heart for love emotion
         if is_heart:
             size = int(self.eye_size * scale_x * self.eye_width_scale)
             self._draw_heart(draw, x, y, size, color)
+            return
+        
+        # Special case: draw crescent for happy emotion
+        if is_crescent:
+            width = int(self.eye_size * scale_x * self.eye_width_scale)
+            self._draw_crescent(draw, x, y, width, color)
             return
         
         size_x = int(self.eye_size * scale_x * self.eye_width_scale)
@@ -230,11 +253,11 @@ class RoboEyes:
             self.target_color = (0, 200, 255)  # Blue
 
         elif state == "happy":
-            # Crescent-shaped happy eyes (curved, not straight)
+            # Crescent-shaped happy eyes (proper curved arcs)
             self.target_x = 0
-            self.target_y = -5  # Slightly up for happy look
-            self.target_width_scale = 1.3  # Wide crescents
-            self.target_height_scale = 0.4  # Thin but not too thin (crescent shape)
+            self.target_y = -3  # Slightly up for happy look
+            self.target_width_scale = 1.4  # Wide crescents
+            self.target_height_scale = 0.35  # For crescent curve
             self.target_angle = 0.0
             self.target_color = (50, 255, 150)  # Bright happy blue-green
 
@@ -273,6 +296,15 @@ class RoboEyes:
             self.target_height_scale = 1.2
             self.target_angle = 0.0
             self.target_color = (0, 200, 255)  # Keep blue
+
+        elif state == "focused":
+            # Attentive, looking slightly upward (like attached image)
+            self.target_x = 0
+            self.target_y = -8
+            self.target_width_scale = 1.0
+            self.target_height_scale = 1.15
+            self.target_angle = 0.0
+            self.target_color = (0, 220, 255)  # Bright blue
 
         elif state == "thinking":
             # Eyes look up and to the side
@@ -375,11 +407,12 @@ class RoboEyes:
 
         color = tuple(int(c) for c in self.current_color)
         
-        # Check if we should draw hearts (love emotion)
+        # Check special eye types
         is_heart = (state == "love")
+        is_crescent = (state == "happy")
         
-        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True, is_heart=is_heart)
-        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False, is_heart=is_heart)
+        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True, is_heart=is_heart, is_crescent=is_crescent)
+        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False, is_heart=is_heart, is_crescent=is_crescent)
 
         return img
 
