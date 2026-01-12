@@ -57,10 +57,11 @@ class RoboEyes:
 
         # Eye geometry
         self.eye_size = eye_size
-        self.eye_spacing = eye_spacing
+        self.eye_spacing = eye_spacing # Default spacing
         self.corner_radius = 12
         
         self.center_y = height // 2
+        # Base positions (will be dynamic based on state potentially)
         self.left_eye_x_base = (width // 2) - eye_spacing // 2
         self.right_eye_x_base = (width // 2) + eye_spacing // 2
 
@@ -87,6 +88,9 @@ class RoboEyes:
         # Color (RGB)
         self.current_color = [0, 220, 255]
         self.target_color = [0, 220, 255]
+        
+        self.target_shape = "rect" # rect, heart, etc.
+        self.current_shape = "rect"
 
         # ================= ANIMATION PARAMS ================= #
         self.micro_movement_enabled = True
@@ -131,6 +135,7 @@ class RoboEyes:
         tang = 0.0
         tul, tll = 0.0, 0.0 # Upper lid, Lower lid
         col = (0, 220, 255) # Default Cyan
+        shape = "rect"
 
         if state == "idle":
             col = (0, 200, 255)
@@ -145,7 +150,7 @@ class RoboEyes:
             ty = 10
             tw, th = 0.95, 0.9
             tul = 0.5  # Droop upper lid
-            tang = 0.1 # Slight droop tilt outer
+            tang = 0.15 # Stronger droop tilt outer
             col = (0, 100, 255)
             
         elif state == "angry":
@@ -157,7 +162,8 @@ class RoboEyes:
             
         elif state == "surprised":
             ty = -5
-            tw, th = 1.25, 1.3
+            # Reduced width to prevent merging (was 1.25)
+            tw, th = 1.05, 1.3 
             tul, tll = -0.1, -0.1 # Widen eyes beyond normal
             col = (200, 240, 255)
             
@@ -174,7 +180,7 @@ class RoboEyes:
             tang = 0.05
             col = (0, 210, 255)
             
-        elif state == "suspicious": # New state
+        elif state == "suspicious":
             ty = 0
             th = 0.6
             tul = 0.4
@@ -183,13 +189,15 @@ class RoboEyes:
             
         elif state == "excited":
             ty = -8
-            tw, th = 1.2, 1.2
-            tul, tll = -0.05, 0.1 # Wide but active
+            # Reduced width slightly to be safe (was 1.2)
+            tw, th = 1.1, 1.2
+            tul, tll = -0.05, 0.1 
             col = (100, 255, 255)
             
-        elif state == "love": # Handle heart in render separately usually, but here we prep
-            tw, th = 1.1, 1.1
+        elif state == "love":
+            tw, th = 1.2, 1.2
             col = (255, 50, 150)
+            shape = "heart"
         
         # Apply targets
         self.spring_x.set_target(tx)
@@ -200,6 +208,7 @@ class RoboEyes:
         self.spring_upper_lid.set_target(tul)
         self.spring_lower_lid.set_target(tll)
         self.target_color = list(col)
+        self.target_shape = shape
 
     def _update_physics(self):
         dt = self.dt
@@ -216,6 +225,9 @@ class RoboEyes:
         # Smooth color transition
         for i in range(3):
             self.current_color[i] += (self.target_color[i] - self.current_color[i]) * 10.0 * dt
+            
+        # Immediate shape switch (no transition needed usually, or looks weird morphing)
+        self.current_shape = self.target_shape
 
     def _update_behaviors(self):
         """High level behaviors like blinking, breathing, idle movements"""
@@ -232,10 +244,10 @@ class RoboEyes:
         if self.is_blinking:
             progress = (t - self.blink_start_time) / self.blink_duration
             if progress < 0.5:
-                # Closing
-                blink_lid_offset = math.sin(progress * math.pi) * 2.5 # multiplier for full closure
+                # Closing (0 to 1)
+                blink_lid_offset = math.sin(progress * math.pi) * 2.5 
             else:
-                # Opening
+                # Opening (1 to 0)
                 blink_lid_offset = math.sin(progress * math.pi) * 2.5
             
             if progress >= 1.0:
@@ -262,9 +274,10 @@ class RoboEyes:
         jitter_x, jitter_y = 0, 0
         if self.micro_movement_enabled:
             # Perlin-ish noise using sum of sines
-            # REDUCED AMPLITUDE: was 1.5, now 0.5
-            jitter_x = (math.sin(t * 1.5 + self.noise_seed) + math.sin(t * 3.7)) * 0.5
-            jitter_y = (math.cos(t * 2.1 + self.noise_seed) + math.cos(t * 5.3)) * 0.5
+            # MUCH SLOWER AND SUBTLER
+            # Reduced freq by factor of 2, amplitude by factor of 3 (from orig)
+            jitter_x = (math.sin(t * 0.5 + self.noise_seed) + math.sin(t * 1.5)) * 0.4
+            jitter_y = (math.cos(t * 0.7 + self.noise_seed) + math.cos(t * 1.3)) * 0.4
 
         return blink_lid_offset, breath_scale, jitter_x, jitter_y
 
@@ -272,8 +285,8 @@ class RoboEyes:
         blink_offset, breath_scale, jitter_x, jitter_y = self._update_behaviors()
         self._update_physics()
 
+        # Create main canvas (Black background)
         img = Image.new("RGB", (self.width, self.height), "black")
-        draw = ImageDraw.Draw(img)
         
         # Resolve final render values
         val_x = self.spring_x.value + jitter_x
@@ -284,129 +297,156 @@ class RoboEyes:
         
         # Eyelids (0-1 range + blink)
         val_ul = max(0.0, min(1.0, self.spring_upper_lid.value + blink_offset))
-        val_ll = max(0.0, min(1.0, self.spring_lower_lid.value)) # Lower lid doesn't blink usually
+        val_ll = max(0.0, min(1.0, self.spring_lower_lid.value)) 
 
         col = tuple(int(c) for c in self.current_color)
 
         # Draw eyes
-        self._draw_eye(draw, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True)
-        self._draw_eye(draw, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False)
+        self._draw_eye_composite(img, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True, shape=self.current_shape)
+        self._draw_eye_composite(img, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False, shape=self.current_shape)
 
         return img
 
-    def _draw_eye(self, draw, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left):
-        # Calculate depth perspective
-        # If looking right (off_x > 0), right eye gets bigger, left gets smaller
-        # Max shift is ~20px
+    def _draw_eye_composite(self, dst_img, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left, shape):
+        """
+        Draws an eye by rendering it upright on a scratchpad using shapes,
+        applying eyelids, rotating the result, and pasting it onto the destination.
+        This preserves valid rounded corners even when rotating.
+        """
         
-        perspective = (off_x / 50.0) # -0.4 to 0.4
+        # 1. Perspective
+        perspective = (off_x / 50.0) 
         if is_left:
             scale_local = 1.0 - (perspective * 0.3)
         else:
             scale_local = 1.0 + (perspective * 0.3)
             
-        # Final geometry
         w = self.eye_size * scale_w * scale_local
         h = self.eye_size * scale_h * 1.2 # Base height factor
         
-        cx = base_x + off_x
-        cy = self.center_y + off_y
+        # Ensure minimums
+        w = max(4, w)
+        h = max(4, h)
         
-        # Bounding box
-        x0 = cx - w/2
-        y0 = cy - h/2
-        x1 = cx + w/2
-        y1 = cy + h/2
+        # 2. Setup scratchpad
+        # Make it large enough to hold rotated version
+        diagonal = math.sqrt(w*w + h*h)
+        pad_size = int(diagonal + 10)
+        pad_size = pad_size + (pad_size % 2) # Make even
         
-        # Rotation handling
-        # We draw a rotated rounded rect by drawing a high-res polygon or rotating the context?
-        # PIL rotation is slow/complex for just one shape. 
-        # Better: Draw huge rect, rotate points manually.
+        cx_pad = pad_size // 2
+        cy_pad = pad_size // 2
         
-        # 1. Create base rounded rect points
-        # Approximation: simple rect if small, nice rounded if large?
-        # Let's use standard pillow rounded rect, BUT we have eyelids to handle.
-        # Handling eyelids + rotation is tricky with basic PIL shapes.
-        # Strategy: Draw the FULL eye shape (rounded rect), then draw BLACK rectangles for eyelids over it relative to rotation.
+        # Use RGBA for transparency
+        scratch = Image.new("RGBA", (pad_size, pad_size), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(scratch)
         
-        # BUT if the eye rotates, the eyelids ("gravity") usually stay relative to the eye or the face?
-        # For simple emotions (angry), lids follow the eye tilt.
+        # 3. Draw Shape (Centered)
+        x0 = cx_pad - w/2
+        y0 = cy_pad - h/2
+        x1 = cx_pad + w/2
+        y1 = cy_pad + h/2
         
-        # Draw base eye
-        if abs(rot) < 0.05:
-            # Simple axis aligned
-            # Ensure coordinates are integers for sharper rendering
+        if shape == "heart":
+            self._draw_heart(draw, cx_pad, cy_pad, w, h, color)
+        else:
+            # Rounded Rect
             draw.rounded_rectangle([x0, y0, x1, y1], radius=self.corner_radius, fill=color)
             
-            # Eyelids (Axis aligned)
-            # Expand mask X by 2px each side to ensure coverage
-            mask_x0 = x0 - 2
-            mask_x1 = x1 + 2
+        # 4. Draw Eyelids (Black rectangles over the shape)
+        mask_color = (0, 0, 0, 255) # Opaque black
+        
+        if upper_lid > 0.01:
+            lid_px = h * upper_lid
+            # Draw from top of image down to lid edge
+            draw.rectangle([0, 0, pad_size, y0 + lid_px], fill=mask_color)
             
-            if upper_lid > 0.05:
-                # Cover top portion - extend UPWARDS to ensure top edge is clean coverage
-                lid_h = h * upper_lid
-                coord_y_cut = y0 + lid_h
-                # Mask from way above (y0-10) to cut line
-                draw.rectangle([mask_x0, y0 - 10, mask_x1, coord_y_cut], fill="black")
-                
-            if lower_lid > 0.05:
-                # Cover bottom portion - extend DOWNWARDS
-                lid_h = h * lower_lid
-                coord_y_cut = y1 - lid_h
-                # Mask from cut line to way below (y1+10)
-                draw.rectangle([mask_x0, coord_y_cut, mask_x1, y1 + 10], fill="black")
-                
+        if lower_lid > 0.01:
+            lid_px = h * lower_lid
+            # Draw from bottom lid edge to bottom of image
+            draw.rectangle([0, y1 - lid_px, pad_size, pad_size], fill=mask_color)
+            
+        # 5. Rotation
+        # Convert rotation to degrees (PIL uses degrees, counter-clockwise)
+        deg = math.degrees(rot)
+        if is_left:
+            # Mirror rotation logic if needed? 
+            # Usually symmetric emotions mean:
+            #Sad: /  \  (Left rotates + , Right rotates -)
+            #Angry: \  / (Left rotates -, Right rotates +)
+            # Wait, spring_angle is usually the 'tilt'. 
+            # If current_angle is +0.2 (sad), we want eyes like / \
+            # Left eye (is_left=True): should rotate +deg (Counter clockwise? No, Clockwise is negative in standard math but PIL?)
+            # PIL rotate: positive = counter-clockwise.
+            # / shape means top moves right. That is Clockwise. So Negative degrees.
+            # \ shape means top moves left. That is Counter-Clockwise. So Positive degrees.
+            
+            # Let's standardize:
+            # Sad (+tilt) -> / \
+            # Angry (-tilt) -> \ /
+            
+            if is_left:
+                final_rot = -deg 
+            else:
+                final_rot = deg
         else:
-            # Rotated
-            # Center of rotation
-            # Rotate 4 corners
-            pts = [
-                (-w/2, -h/2), (w/2, -h/2),
-                (w/2, h/2), (-w/2, h/2)
-            ]
-            
-            c = math.cos(rot)
-            s = math.sin(rot)
-            
-            rot_pts = []
-            for px, py in pts:
-                rot_pts.append((
-                    cx + px*c - py*s,
-                    cy + px*s + py*c
-                ))
+            if is_left:
+                final_rot = deg
+            else:
+                final_rot = -deg
                 
-            draw.polygon(rot_pts, fill=color)
-            
-            # Rotated Eyelids
-            # Upper lid mask
-            if upper_lid > 0.05:
-                lid_h = h * upper_lid
-                # Mask is the top part of the unrotated box
-                # Extend mask width and height (upwards) to ensure coverage
-                # (-w/2 - 5, -h/2 - 10) to (w/2 + 5, -h/2 + lid_h)
-                l_pts = [
-                    (-w/2 - 5, -h/2 - 10), (w/2 + 5, -h/2 - 10),
-                    (w/2 + 5, -h/2 + lid_h), (-w/2 - 5, -h/2 + lid_h)
-                ]
-                r_l_pts = []
-                for px, py in l_pts:
-                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
-                draw.polygon(r_l_pts, fill="black")
+        # Actually, let's look at previous logic:
+        # Sad (angle=0.1) -> means positive.
+        # Angry (angle=-0.25) -> means negative.
+        # If I want / \ for Sad:
+        # Left eye / is Clockwise (-). Right eye \ is Counter-Clockwise (+).
+        # So if Angle is +, Left should be -, Right should be +.
+        
+        if is_left:
+            final_rot = -deg
+        else:
+            final_rot = deg
 
-            # Lower lid mask
-            if lower_lid > 0.05:
-                lid_h = h * lower_lid
-                # (-w/2 - 5, h/2 - lid_h) to (w/2 + 5, h/2 + 10)
-                l_pts = [
-                    (-w/2 - 5, h/2 - lid_h), (w/2 + 5, h/2 - lid_h),
-                    (w/2 + 5, h/2 + 10), (-w/2 - 5, h/2 + 10)
-                ]
-                r_l_pts = []
-                for px, py in l_pts:
-                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
-                draw.polygon(r_l_pts, fill="black")
+        rotated = scratch.rotate(final_rot, resample=Image.BICUBIC, expand=False)
+        
+        # 6. Composite onto main image
+        # Calculate where the center of the pad should be on the main image
+        dest_cx = base_x + off_x
+        dest_cy = self.center_y + off_y
+        
+        dest_x = int(dest_cx - pad_size/2)
+        dest_y = int(dest_cy - pad_size/2)
+        
+        # Paste using alpha channel of rotated image as mask
+        dst_img.paste(rotated, (dest_x, dest_y), rotated)
 
+    def _draw_heart(self, draw, cx, cy, w, h, color):
+        """Draws a heart shape centered at cx, cy within bounding box w x h"""
+        # Basic heart shape using two circles and a triangle
+        # Or bezier. Let's use two circles and a polygon which is robust.
+        
+        # Adjust aspect for heart
+        h = h * 1.1 
+        
+        # Top centers
+        r = w / 4
+        x_left = cx - w/4
+        x_right = cx + w/4
+        y_tops = cy - h/4
+        
+        # Circles
+        draw.ellipse([x_left - r, y_tops - r, x_left + r, y_tops + r], fill=color)
+        draw.ellipse([x_right - r, y_tops - r, x_right + r, y_tops + r], fill=color)
+        
+        # Triangle (inverted)
+        # Top points are tangent to circles roughly at x_left-r and x_right+r?
+        # A simple triangle:
+        poly = [
+            (cx - w/2, y_tops), # Top left far
+            (cx + w/2, y_tops), # Top right far
+            (cx, cy + h/2)      # Bottom tip
+        ]
+        draw.polygon(poly, fill=color)
 
     def _loop(self):
         while self.running:
