@@ -3,6 +3,9 @@ Stella Nurse - Eye Animation Controller
 Easy API for controlling robot emotions from any module
 """
 
+import time  # Add this import
+
+
 from eyes import RoboEyes
 from display_driver import init_display
 
