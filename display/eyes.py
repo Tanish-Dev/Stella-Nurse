@@ -2,7 +2,7 @@ import time
 import threading
 import random
 import math
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 class SpringScalar:
     """
@@ -107,6 +107,14 @@ class RoboEyes:
         self.running = False
         self._lock = threading.Lock()
 
+        # Particles (for ZZZs)
+        self.particles = []
+        try:
+            self.font = ImageFont.truetype("arial.ttf", 24)
+        except:
+            self.font = ImageFont.load_default()
+
+
     # ================= PUBLIC API ================= #
 
     def set_state(self, state):
@@ -190,6 +198,17 @@ class RoboEyes:
         elif state == "love": # Handle heart in render separately usually, but here we prep
             tw, th = 1.1, 1.1
             col = (255, 50, 150)
+
+        elif state == "alert":
+            # Siren animation handled in render
+            tw, th = 1.1, 1.1
+            col = (255, 0, 0)
+
+        elif state == "sleeping":
+            ty = 10
+            tul = 1.0 # Fully closed
+            tll = 0.0
+            col = (0, 100, 200) # Dim dormant color
         
         # Apply targets
         self.spring_x.set_target(tx)
@@ -268,6 +287,34 @@ class RoboEyes:
 
         return blink_lid_offset, breath_scale, jitter_x, jitter_y
 
+    def _update_particles(self, dt):
+        # Spawn Zs if sleeping
+        if self.state == "sleeping":
+            if random.random() < (0.8 * dt): # approx 0.8 per second
+                self.particles.append({
+                    'x': random.uniform(self.width * 0.2, self.width * 0.8),
+                    'y': self.height - 20,
+                    'vx': random.uniform(-5, 5),
+                    'vy': random.uniform(-15, -25),
+                    'life': 1.0,
+                    'text': "Z" if random.random() > 0.3 else "z"
+                })
+
+        # Update particles
+        alive = []
+        for p in self.particles:
+            p['x'] += p['vx'] * dt
+            p['y'] += p['vy'] * dt
+            p['life'] -= 0.4 * dt # Fade out
+            
+            # Wiggle
+            p['x'] += math.sin(time.time() * 5 + p['y']) * 10 * dt
+            
+            if p['life'] > 0:
+                alive.append(p)
+        self.particles = alive
+
+
     def _render(self):
         blink_offset, breath_scale, jitter_x, jitter_y = self._update_behaviors()
         self._update_physics()
@@ -286,20 +333,35 @@ class RoboEyes:
         val_ul = max(0.0, min(1.0, self.spring_upper_lid.value + blink_offset))
         val_ll = max(0.0, min(1.0, self.spring_lower_lid.value)) # Lower lid doesn't blink usually
 
-        col = tuple(int(c) for c in self.current_color)
+        # Update particles
+        self._update_particles(self.dt)
+
+        # Alert siren effect
+        if self.state == "alert":
+            # Oscillate Red/Blue
+            siren_phase = (time.time() * 8) % 2.0 # Fast flash
+            if siren_phase < 1.0:
+                 col = (255, 0, 0)
+            else:
+                 col = (0, 0, 255)
 
         # Draw eyes
-        self._draw_eye(draw, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True)
-        self._draw_eye(draw, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False)
+        self._draw_eye(img, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True)
+        self._draw_eye(img, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False)
+
+        # Draw particles
+        for p in self.particles:
+             alpha = int(255 * p['life'])
+             # Simple simulated text drawing if we can't do transparent text easily on RGB
+             # We can't draw RGBA text on RGB image directly with alpha blending using 'draw.text' easily in old PIL?
+             # actually we can just draw white.
+             draw.text((p['x'], p['y']), p['text'], font=self.font, fill=(200, 200, 255))
 
         return img
 
-    def _draw_eye(self, draw, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left):
+    def _draw_eye(self, img, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left):
         # Calculate depth perspective
-        # If looking right (off_x > 0), right eye gets bigger, left gets smaller
-        # Max shift is ~20px
-        
-        perspective = (off_x / 50.0) # -0.4 to 0.4
+        perspective = (off_x / 50.0) 
         if is_left:
             scale_local = 1.0 - (perspective * 0.3)
         else:
@@ -307,105 +369,85 @@ class RoboEyes:
             
         # Final geometry
         w = self.eye_size * scale_w * scale_local
-        h = self.eye_size * scale_h * 1.2 # Base height factor
+        h = self.eye_size * scale_h * 1.2
         
+        # Center position on main image
         cx = base_x + off_x
         cy = self.center_y + off_y
         
-        # Bounding box
-        x0 = cx - w/2
-        y0 = cy - h/2
-        x1 = cx + w/2
-        y1 = cy + h/2
+        # We render the eye into a temporary RGBA image to handle rotation + rounded corners cleanly
+        # Size must accommodate the rotated eye
+        diag = int(math.ceil(math.sqrt(w*w + h*h))) + 6
+        s_size = diag + (diag % 2) # Make even
         
-        # Rotation handling
-        # We draw a rotated rounded rect by drawing a high-res polygon or rotating the context?
-        # PIL rotation is slow/complex for just one shape. 
-        # Better: Draw huge rect, rotate points manually.
+        scratch = Image.new("RGBA", (s_size, s_size), (0,0,0,0))
+        s_draw = ImageDraw.Draw(scratch)
         
-        # 1. Create base rounded rect points
-        # Approximation: simple rect if small, nice rounded if large?
-        # Let's use standard pillow rounded rect, BUT we have eyelids to handle.
-        # Handling eyelids + rotation is tricky with basic PIL shapes.
-        # Strategy: Draw the FULL eye shape (rounded rect), then draw BLACK rectangles for eyelids over it relative to rotation.
+        # Center of scratch
+        sc = s_size / 2.0
         
-        # BUT if the eye rotates, the eyelids ("gravity") usually stay relative to the eye or the face?
-        # For simple emotions (angry), lids follow the eye tilt.
+        # Bounding box of eye in scratch
+        x0 = sc - w/2
+        y0 = sc - h/2
+        x1 = sc + w/2
+        y1 = sc + h/2
         
-        # Draw base eye
-        if abs(rot) < 0.05:
-            # Simple axis aligned
-            # Ensure coordinates are integers for sharper rendering
-            draw.rounded_rectangle([x0, y0, x1, y1], radius=self.corner_radius, fill=color)
-            
-            # Eyelids (Axis aligned)
-            # Expand mask X by 2px each side to ensure coverage
-            mask_x0 = x0 - 2
-            mask_x1 = x1 + 2
-            
-            if upper_lid > 0.05:
-                # Cover top portion - extend UPWARDS to ensure top edge is clean coverage
-                lid_h = h * upper_lid
-                coord_y_cut = y0 + lid_h
-                # Mask from way above (y0-10) to cut line
-                draw.rectangle([mask_x0, y0 - 10, mask_x1, coord_y_cut], fill="black")
-                
-            if lower_lid > 0.05:
-                # Cover bottom portion - extend DOWNWARDS
-                lid_h = h * lower_lid
-                coord_y_cut = y1 - lid_h
-                # Mask from cut line to way below (y1+10)
-                draw.rectangle([mask_x0, coord_y_cut, mask_x1, y1 + 10], fill="black")
-                
-        else:
-            # Rotated
-            # Center of rotation
-            # Rotate 4 corners
-            pts = [
-                (-w/2, -h/2), (w/2, -h/2),
-                (w/2, h/2), (-w/2, h/2)
-            ]
-            
-            c = math.cos(rot)
-            s = math.sin(rot)
-            
-            rot_pts = []
-            for px, py in pts:
-                rot_pts.append((
-                    cx + px*c - py*s,
-                    cy + px*s + py*c
-                ))
-                
-            draw.polygon(rot_pts, fill=color)
-            
-            # Rotated Eyelids
-            # Upper lid mask
-            if upper_lid > 0.05:
-                lid_h = h * upper_lid
-                # Mask is the top part of the unrotated box
-                # Extend mask width and height (upwards) to ensure coverage
-                # (-w/2 - 5, -h/2 - 10) to (w/2 + 5, -h/2 + lid_h)
-                l_pts = [
-                    (-w/2 - 5, -h/2 - 10), (w/2 + 5, -h/2 - 10),
-                    (w/2 + 5, -h/2 + lid_h), (-w/2 - 5, -h/2 + lid_h)
-                ]
-                r_l_pts = []
-                for px, py in l_pts:
-                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
-                draw.polygon(r_l_pts, fill="black")
+        # Draw base rounded rect
+        s_draw.rounded_rectangle([x0, y0, x1, y1], radius=self.corner_radius, fill=color)
+        
+        # Eyelids (Draw black/transparent to mask)
+        # Using 'composite' mode or just drawing black (since background is black)
+        # We'll draw Clear (0,0,0,0) or Black? 
+        # Since we paste this onto a black background, Transparent is better IF we want to see background stars etc.
+        # But for now, drawing Clear is tricky with standard draw. 
+        # Let's draw Clear using erase mode? PIL draw doesn't support 'erase' easily.
+        # Better: Draw Black. The background is black.
+        lid_color = (0, 0, 0, 0) # Transparent? No, that won't overwrite the eye color.
+        # We need to erase.
+        # Use 'fill=(0,0,0,0)' and mode? No.
+        # We can just draw Black (0,0,0,255) effectively masking it if the final bg is black.
+        # Since line 275 is Image.new("RGB", ..., "black"), drawing black on top is perfect.
+        lid_fill = (0, 0, 0, 255)
 
-            # Lower lid mask
-            if lower_lid > 0.05:
-                lid_h = h * lower_lid
-                # (-w/2 - 5, h/2 - lid_h) to (w/2 + 5, h/2 + 10)
-                l_pts = [
-                    (-w/2 - 5, h/2 - lid_h), (w/2 + 5, h/2 - lid_h),
-                    (w/2 + 5, h/2 + 10), (-w/2 - 5, h/2 + 10)
-                ]
-                r_l_pts = []
-                for px, py in l_pts:
-                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
-                draw.polygon(r_l_pts, fill="black")
+        if upper_lid > 0.01:
+            lid_h = h * upper_lid
+            # Top down
+            s_draw.rectangle([0, 0, s_size, y0 + lid_h], fill=lid_fill)
+            
+        if lower_lid > 0.01:
+            lid_h = h * lower_lid
+            # Bottom up
+            s_draw.rectangle([0, y1 - lid_h, s_size, s_size], fill=lid_fill)
+
+        # Rotate
+        # PIL rotate is counter-clockwise (degrees)
+        # self.spring_angle is usually radians (math functions use radians)
+        # Check usage: math.cos(rot) in old code implies radians.
+        # math.degrees converts radians to degrees.
+        # Negative sign might be needed depending on coordinate system.
+        # Usual screen coords: Y down.
+        # Clockwise rotation in screen coords (Y down) corresponds to negative angle in standard math (Y up)? 
+        # Let's stick to math.degrees(rot) and see. If it rotates wrong way, we flip.
+        # Since the old code used: cx + px*c - py*s (standard rotation matrix),
+        # PIL rotate direction matches standard math positive angle (CCW on standard plane).
+        # But screen Y is down, so CCW visually looks CW?? 
+        # Let's just use -math.degrees(rot) as a guess or math.degrees(rot).
+        # Actually, let's look at old code:
+        # px*c - py*s for X.
+        # rotation matrix [[c, -s], [s, c]] corresponds to CCW rotation.
+        # old code had 'tang = -0.25' for "inward tilt" (angry).
+        # If left eye (base < center), inward tilt means top goes right? No, top goes in (right).
+        # -0.25 rad is ~ -14 deg.
+        # If we want consistent behavior, we use standard mapping.
+        rotated = scratch.rotate(math.degrees(rot), resample=Image.BICUBIC)
+        
+        # Paste onto main image
+        # Offset to center
+        px = int(cx - s_size/2)
+        py = int(cy - s_size/2)
+        
+        # Paste using itself as mask to handle transparency
+        img.paste(rotated, (px, py), rotated)
 
 
     def _loop(self):
