@@ -7,8 +7,8 @@ def init_display():
         port=0,
         device=0,
         gpio_DC=25,
-        gpio_RST=27,
-        bus_speed_hz=8000000   # slower = safer
+        gpio_RST=None,   # <-- DISABLE RESET
+        bus_speed_hz=8000000
     )
 
     device = st7735(
