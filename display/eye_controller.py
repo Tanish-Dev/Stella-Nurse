@@ -89,6 +89,10 @@ class EyeController:
         """Affectionate, warm, pulsing"""
         self.eyes.set_state("love")
     
+    def focused(self):
+        """Alert, attentive, slightly narrowed"""
+        self.eyes.set_state("focused")
+    
     # ===== Utility Methods ===== #
     
     def set_emotion(self, emotion: str):
@@ -98,7 +102,7 @@ class EyeController:
         Args:
             emotion: One of: idle, happy, sad, angry, surprised, curious,
                     thinking, listening, speaking, alert, concerned, 
-                    sleepy, excited, love
+                    sleepy, excited, love, focused
         """
         self.eyes.set_state(emotion)
     

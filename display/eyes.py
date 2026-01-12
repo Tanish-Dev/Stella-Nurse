@@ -39,7 +39,7 @@ class RoboEyes:
         self.target_x = 0.0
         self.target_y = 0.0
 
-        self.move_speed = 0.55  # Quick, snappy movements (Cozmo-like)
+        self.move_speed = 0.75  # Very quick, snappy movements (Cozmo-like)
         self.last_idle_move = time.time()
 
         # Blink system - Cozmo style
@@ -55,6 +55,9 @@ class RoboEyes:
         self.eye_height_scale = 1.0
         self.target_width_scale = 1.0
         self.target_height_scale = 1.0
+        
+        self.width_scale_speed = 0.18  # Faster, smoother scaling
+        self.height_scale_speed = 0.18  # Faster, smoother scaling
         
         self.eye_angle = 0.0  # For tilt
         self.target_angle = 0.0
@@ -95,9 +98,9 @@ class RoboEyes:
         self.current_x += (self.target_x - self.current_x) * self.move_speed
         self.current_y += (self.target_y - self.current_y) * self.move_speed
         
-        # Smooth eye shape morphing (slower for smoother transitions)
-        self.eye_width_scale += (self.target_width_scale - self.eye_width_scale) * 0.08
-        self.eye_height_scale += (self.target_height_scale - self.eye_height_scale) * 0.08
+        # Faster smooth eye shape morphing
+        self.eye_width_scale += (self.target_width_scale - self.eye_width_scale) * self.width_scale_speed
+        self.eye_height_scale += (self.target_height_scale - self.eye_height_scale) * self.height_scale_speed
         
         # Smooth angle transitions
         self.eye_angle += (self.target_angle - self.eye_angle) * 0.12
@@ -162,36 +165,13 @@ class RoboEyes:
         
         draw.polygon(points, fill=color)
 
-    def _draw_crescent(self, draw, x, y, width, color):
-        """Draw an upward-curved crescent for happy eyes"""
-        # Draw a crescent by using a thick arc
-        thickness = int(width * 0.15)  # Arc thickness
-        
-        # Create crescent as a partial ellipse
-        # Draw outer arc
-        bbox_outer = [x - width//2, y - width//4, x + width//2, y + width//4]
-        # Draw inner arc to create hollow effect (making it look like a smile)
-        bbox_inner = [x - width//2 + thickness, y - width//4 + thickness, 
-                      x + width//2 - thickness, y + width//4 - thickness]
-        
-        # For a simpler filled crescent, draw a chord
-        # We'll draw an ellipse and then cover part of it
-        bbox = [x - width//2, y - width//3, x + width//2, y + width//6]
-        draw.ellipse(bbox, fill=color)
-
-    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True, is_heart=False, is_crescent=False):
+    def _draw_eye(self, draw, x, y, scale_x=1.0, scale_y=1.0, angle=0.0, color=(0, 220, 255), is_left=True, is_heart=False):
         """Draw a single eye - no pupils, just solid shapes"""
         
         # Special case: draw heart for love emotion
         if is_heart:
             size = int(self.eye_size * scale_x * self.eye_width_scale)
             self._draw_heart(draw, x, y, size, color)
-            return
-        
-        # Special case: draw crescent for happy emotion
-        if is_crescent:
-            width = int(self.eye_size * scale_x * self.eye_width_scale)
-            self._draw_crescent(draw, x, y, width, color)
             return
         
         size_x = int(self.eye_size * scale_x * self.eye_width_scale)
@@ -253,11 +233,11 @@ class RoboEyes:
             self.target_color = (0, 200, 255)  # Blue
 
         elif state == "happy":
-            # Crescent-shaped happy eyes (proper curved arcs)
+            # Wide, thin happy eyes
             self.target_x = 0
-            self.target_y = -3  # Slightly up for happy look
-            self.target_width_scale = 1.4  # Wide crescents
-            self.target_height_scale = 0.35  # For crescent curve
+            self.target_y = -5  # Slightly up for happy look
+            self.target_width_scale = 1.3  # Wide
+            self.target_height_scale = 0.4  # Thin
             self.target_angle = 0.0
             self.target_color = (50, 255, 150)  # Bright happy blue-green
 
@@ -298,13 +278,13 @@ class RoboEyes:
             self.target_color = (0, 200, 255)  # Keep blue
 
         elif state == "focused":
-            # Attentive, looking slightly upward (like attached image)
+            # Attentive, alert, slightly narrowed
             self.target_x = 0
-            self.target_y = -8
-            self.target_width_scale = 1.0
-            self.target_height_scale = 1.15
+            self.target_y = 0
+            self.target_width_scale = 0.95  # Slightly narrower
+            self.target_height_scale = 1.25  # Taller, alert
             self.target_angle = 0.0
-            self.target_color = (0, 220, 255)  # Bright blue
+            self.target_color = (20, 200, 255)  # Sharp blue
 
         elif state == "thinking":
             # Eyes look up and to the side
@@ -407,12 +387,11 @@ class RoboEyes:
 
         color = tuple(int(c) for c in self.current_color)
         
-        # Check special eye types
+        # Check if we should draw hearts (love emotion)
         is_heart = (state == "love")
-        is_crescent = (state == "happy")
         
-        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True, is_heart=is_heart, is_crescent=is_crescent)
-        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False, is_heart=is_heart, is_crescent=is_crescent)
+        self._draw_eye(draw, left_x, eye_y, left_scale_x, scale_y, self.eye_angle, color, is_left=True, is_heart=is_heart)
+        self._draw_eye(draw, right_x, eye_y, right_scale_x, scale_y, self.eye_angle, color, is_left=False, is_heart=is_heart)
 
         return img
 
