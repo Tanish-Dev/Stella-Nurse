@@ -336,7 +336,10 @@ class RoboEyes:
         # Update particles
         self._update_particles(self.dt)
 
-        # Alert siren effect
+        # Default color from physics
+        col = tuple(int(c) for c in self.current_color)
+
+        # Alert siren effect override
         if self.state == "alert":
             # Oscillate Red/Blue
             siren_phase = (time.time() * 8) % 2.0 # Fast flash
