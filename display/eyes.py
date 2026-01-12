@@ -11,9 +11,9 @@ class RoboEyes:
         device,
         width=128,
         height=128,
-        fps=100,
+        fps=60,
         eye_size=36,
-        eye_spacing=50,
+        eye_spacing=45,
         display_type="adafruit",
     ):
         self.device = device
