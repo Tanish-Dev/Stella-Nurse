@@ -18,7 +18,7 @@ def init_display():
         width=128,
         height=128,
         rotation=90,
-        x_offset=0,
+        x_offset=1,
         y_offset=3,     # 👈 your magic number
         bgr=False
     )
