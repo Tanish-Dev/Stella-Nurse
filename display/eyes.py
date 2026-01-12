@@ -241,6 +241,7 @@ class RoboEyes:
             if progress >= 1.0:
                 self.is_blinking = False
                 self.next_blink_time = t + random.uniform(1.5, 6.0)
+                blink_lid_offset = 0.0 # Force zero to prevent glitches
 
         # 2. Idle wandering
         if self.state == "idle" and self.micro_movement_enabled:
@@ -273,7 +274,6 @@ class RoboEyes:
         self._update_physics()
 
         img = Image.new("RGB", (self.width, self.height), "black")
-        draw = ImageDraw.Draw(img)
         
         # Resolve final render values
         val_x = self.spring_x.value + jitter_x
@@ -289,12 +289,14 @@ class RoboEyes:
         col = tuple(int(c) for c in self.current_color)
 
         # Draw eyes
-        self._draw_eye(draw, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True)
-        self._draw_eye(draw, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False)
+        self._draw_eye(img, self.left_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=True)
+        self._draw_eye(img, self.right_eye_x_base, val_x, val_y, val_w, val_h, val_rot, val_ul, val_ll, col, is_left=False)
 
         return img
 
-    def _draw_eye(self, draw, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left):
+    def _draw_eye(self, img, base_x, off_x, off_y, scale_w, scale_h, rot, upper_lid, lower_lid, color, is_left):
+        draw = ImageDraw.Draw(img)
+        
         # Calculate depth perspective
         # If looking right (off_x > 0), right eye gets bigger, left gets smaller
         # Max shift is ~20px
@@ -318,21 +320,7 @@ class RoboEyes:
         x1 = cx + w/2
         y1 = cy + h/2
         
-        # Rotation handling
-        # We draw a rotated rounded rect by drawing a high-res polygon or rotating the context?
-        # PIL rotation is slow/complex for just one shape. 
-        # Better: Draw huge rect, rotate points manually.
-        
-        # 1. Create base rounded rect points
-        # Approximation: simple rect if small, nice rounded if large?
-        # Let's use standard pillow rounded rect, BUT we have eyelids to handle.
-        # Handling eyelids + rotation is tricky with basic PIL shapes.
-        # Strategy: Draw the FULL eye shape (rounded rect), then draw BLACK rectangles for eyelids over it relative to rotation.
-        
-        # BUT if the eye rotates, the eyelids ("gravity") usually stay relative to the eye or the face?
-        # For simple emotions (angry), lids follow the eye tilt.
-        
-        # Draw base eye
+        # 1. Simple Axis Aligned (Fast Path)
         if abs(rot) < 0.05:
             # Simple axis aligned
             # Ensure coordinates are integers for sharper rendering
@@ -357,55 +345,60 @@ class RoboEyes:
                 # Mask from cut line to way below (y1+10)
                 draw.rectangle([mask_x0, coord_y_cut, mask_x1, y1 + 10], fill="black")
                 
+        # 2. Rotated (Quality Path with Rounding)
         else:
-            # Rotated
-            # Center of rotation
-            # Rotate 4 corners
-            pts = [
-                (-w/2, -h/2), (w/2, -h/2),
-                (w/2, h/2), (-w/2, h/2)
-            ]
+            # Create a larger canvas to draw the unrotated eye, then rotate it
+            diag_size = int(math.hypot(w, h)) + 20
+            # Ensure even size for center alignment
+            if diag_size % 2 != 0: diag_size += 1
             
-            c = math.cos(rot)
-            s = math.sin(rot)
+            # 2a. Draw unrotated eye on temp buffer
+            # Use RGBA for transparency
+            temp_img = Image.new("RGBA", (diag_size, diag_size), (0,0,0,0))
+            temp_draw = ImageDraw.Draw(temp_img)
             
-            rot_pts = []
-            for px, py in pts:
-                rot_pts.append((
-                    cx + px*c - py*s,
-                    cy + px*s + py*c
-                ))
-                
-            draw.polygon(rot_pts, fill=color)
+            tx = diag_size / 2
+            ty = diag_size / 2
             
-            # Rotated Eyelids
-            # Upper lid mask
+            # Unrotated coords centered at tx, ty
+            rx0 = tx - w/2
+            ry0 = ty - h/2
+            rx1 = tx + w/2
+            ry1 = ty + h/2
+            
+            # Draw rounded eye
+            temp_draw.rounded_rectangle([rx0, ry0, rx1, ry1], radius=self.corner_radius, fill=color)
+            
+            # Draw eyelids on temp buffer (also unrotated)
+            rmask_x0 = rx0 - 2
+            rmask_x1 = rx1 + 2
+            
             if upper_lid > 0.05:
                 lid_h = h * upper_lid
-                # Mask is the top part of the unrotated box
-                # Extend mask width and height (upwards) to ensure coverage
-                # (-w/2 - 5, -h/2 - 10) to (w/2 + 5, -h/2 + lid_h)
-                l_pts = [
-                    (-w/2 - 5, -h/2 - 10), (w/2 + 5, -h/2 - 10),
-                    (w/2 + 5, -h/2 + lid_h), (-w/2 - 5, -h/2 + lid_h)
-                ]
-                r_l_pts = []
-                for px, py in l_pts:
-                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
-                draw.polygon(r_l_pts, fill="black")
-
-            # Lower lid mask
+                r_y_cut = ry0 + lid_h
+                temp_draw.rectangle([rmask_x0, ry0 - 10, rmask_x1, r_y_cut], fill="black")
+            
             if lower_lid > 0.05:
                 lid_h = h * lower_lid
-                # (-w/2 - 5, h/2 - lid_h) to (w/2 + 5, h/2 + 10)
-                l_pts = [
-                    (-w/2 - 5, h/2 - lid_h), (w/2 + 5, h/2 - lid_h),
-                    (w/2 + 5, h/2 + 10), (-w/2 - 5, h/2 + 10)
-                ]
-                r_l_pts = []
-                for px, py in l_pts:
-                    r_l_pts.append((cx + px*c - py*s, cy + px*s + py*c))
-                draw.polygon(r_l_pts, fill="black")
+                r_y_cut = ry1 - lid_h
+                temp_draw.rectangle([rmask_x0, r_y_cut, rmask_x1, ry1 + 10], fill="black")
+            
+            # 2b. Rotate
+            # PIL rotate is counter-clockwise. Positive rot (radians) usually means clockwise movement on screen.
+            # So we rotate by negative degrees.
+            rot_deg = math.degrees(rot)
+            rotated_img = temp_img.rotate(-rot_deg, resample=Image.BICUBIC)
+            
+            # 2c. Paste onto main image
+            # Align centers
+            # cx, cy is center on main img
+            # tx, ty was center on temp img (which is also center of rotated_img)
+            
+            paste_x = int(cx - (diag_size / 2))
+            paste_y = int(cy - (diag_size / 2))
+            
+            # Paste with alpha mask
+            img.paste(rotated_img, (paste_x, paste_y), rotated_img)
 
 
     def _loop(self):
