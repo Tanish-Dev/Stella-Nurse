@@ -21,7 +21,7 @@ disp = st7735.ST7735R(
     height=128,
     rotation=90,
     x_offset=2,    # <-- FIX rainbow pixels
-    y_offset=2,    # <-- FIX rainbow pixels
+    y_offset=3,    # <-- FIX rainbow pixels
     bgr=False
 )
 
