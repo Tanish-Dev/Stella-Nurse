@@ -15,12 +15,12 @@ def init_display():
         cs=cs,
         dc=dc,
         rst=rst,
-        width=128,
+        width=160,
         height=128,
         rotation=90,
-        x_offset=3,
-        y_offset=3,     # 👈 your magic number
-        bgr=False
+        x_offset=0,
+        y_offset=0,     # 👈 your magic number
+        bgr=True
     )
 
     return disp
