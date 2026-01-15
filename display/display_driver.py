@@ -10,17 +10,18 @@ def init_display():
     dc = digitalio.DigitalInOut(board.D25)
     rst = digitalio.DigitalInOut(board.D27)
 
+    # Offsets align the active area so the first column isn't a stray blue line
     disp = st7735.ST7735R(
         spi,
         cs=cs,
         dc=dc,
         rst=rst,
-        width=160,
+        width=128,
         height=128,
         rotation=90,
-        x_offset=0,
-        y_offset=0,     # 👈 your magic number
-        bgr=True
+        x_offset=2,
+        y_offset=3,
+        bgr=False
     )
 
     return disp
