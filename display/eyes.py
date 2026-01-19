@@ -43,7 +43,7 @@ class RoboEyes:
         width=160,
         height=128,
         fps=60,
-        eye_size=42,
+        eye_size=44,
         eye_spacing=58,
         display_type="adafruit",
     ):
@@ -58,7 +58,7 @@ class RoboEyes:
         # Eye geometry
         self.eye_size = eye_size
         self.eye_spacing = eye_spacing
-        self.corner_radius = 20
+        self.corner_radius = 16
         
         self.center_y = height // 2
         self.left_eye_x_base = (width // 2) - eye_spacing // 2
