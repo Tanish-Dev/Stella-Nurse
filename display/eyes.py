@@ -40,8 +40,8 @@ class RoboEyes:
     def __init__(
         self,
         device,
-        width=128,
-        height=160,
+        width=160,
+        height=128,
         fps=60,
         eye_size=36,
         eye_spacing=45,
