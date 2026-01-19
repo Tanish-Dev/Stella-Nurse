@@ -7,3 +7,5 @@ pyaudio
 numpy
 python-dotenv
 langchain-google-genai
+langchain-community
+SpeechRecognition

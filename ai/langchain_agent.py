@@ -4,7 +4,11 @@ from typing import AsyncGenerator
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+try:
+    from langchain.agents import AgentExecutor, create_tool_calling_agent
+except ImportError:
+    from langchain.agents.agent import AgentExecutor
+    from langchain.agents import create_tool_calling_agent
 from langchain_core.runnables import RunnableConfig
 
 # Import tools
