@@ -85,8 +85,8 @@ class RoboEyes:
         self.spring_lower_lid = SpringScalar(0.0, **spring_config)
         
         # Color (RGB)
-        self.current_color = [0, 220, 255]
-        self.target_color = [0, 220, 255]
+        self.current_color = [255, 255, 255]
+        self.target_color = [255, 255, 255]
 
         # ================= ANIMATION PARAMS ================= #
         self.micro_movement_enabled = True
@@ -130,16 +130,16 @@ class RoboEyes:
         tw, th = 1.0, 1.0
         tang = 0.0
         tul, tll = 0.0, 0.0 # Upper lid, Lower lid
-        col = (0, 220, 255) # Default Cyan
+        col = (255, 255, 255) # Default White
 
         if state == "idle":
-            col = (0, 200, 255)
+            col = (255, 255, 255)
             
         elif state == "happy":
             ty = -5
             tw, th = 1.1, 0.9
             tll = 0.55  # Push lower lid up significantly (cheek smile)
-            col = (50, 255, 150)
+            col = (255, 255, 255)
             
         elif state == "sad":
             ty = 10
@@ -159,7 +159,7 @@ class RoboEyes:
             ty = -5
             tw, th = 1.25, 1.3
             tul, tll = -0.1, -0.1 # Widen eyes beyond normal
-            col = (200, 240, 255)
+            col = (255, 255, 255)
             
         elif state == "sleepy":
             ty = 10
@@ -172,7 +172,7 @@ class RoboEyes:
             tw = 1.1
             tul = 0.1
             tang = 0.05
-            col = (0, 210, 255)
+            col = (255, 255, 255)
             
         elif state == "suspicious": # New state
             ty = 0
@@ -185,7 +185,7 @@ class RoboEyes:
             ty = -8
             tw, th = 1.2, 1.2
             tul, tll = -0.05, 0.1 # Wide but active
-            col = (100, 255, 255)
+            col = (255, 255, 255)
             
         elif state == "love": # Handle heart in render separately usually, but here we prep
             tw, th = 1.1, 1.1
