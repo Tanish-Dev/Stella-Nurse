@@ -43,7 +43,7 @@ class RoboEyes:
         width=160,
         height=128,
         fps=60,
-        eye_size=48,
+        eye_size=42,
         eye_spacing=58,
         display_type="adafruit",
     ):
