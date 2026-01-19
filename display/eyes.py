@@ -41,7 +41,7 @@ class RoboEyes:
         self,
         device,
         width=128,
-        height=128,
+        height=160,
         fps=60,
         eye_size=36,
         eye_spacing=45,
