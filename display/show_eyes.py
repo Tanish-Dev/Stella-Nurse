@@ -22,44 +22,91 @@ except ImportError:
 def main():
     print("🤖 Starting Eye Show... (Press Ctrl+C to exit)")
     
-    # Initialize Sound
-    robot_sound = None
+    # Initialize Sounds
+    robot_sounds = []
+    last_sound_time = 0
+    min_cooldown = 1.0  # Minimum time between sounds
+    
     try:
         import pygame
         pygame.mixer.init()
-        # Path to new robot noise sound
-        sound_path = os.path.join(os.path.dirname(__file__), "..", "assets", "sounds", "robot-noises-70217.mp3")
-        if os.path.exists(sound_path):
-            robot_sound = pygame.mixer.Sound(sound_path)
-            print(f"🔊 Sound initialized: {sound_path}")
+        
+        # Load all mp3s from assets/sounds
+        sounds_dir = os.path.join(os.path.dirname(__file__), "..", "assets", "sounds")
+        if os.path.exists(sounds_dir):
+            for filename in os.listdir(sounds_dir):
+                if filename.endswith(".mp3"):
+                    path = os.path.join(sounds_dir, filename)
+                    try:
+                        snd = pygame.mixer.Sound(path)
+                        robot_sounds.append(snd)
+                        print(f"🔊 Loaded: {filename}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to load {filename}: {e}")
+            
+            if not robot_sounds:
+                print("⚠️ No .mp3 sounds found in assets/sounds")
         else:
-            print(f"⚠️ Sound file not found at: {sound_path}")
+            print(f"⚠️ Sounds directory not found: {sounds_dir}")
+
     except ImportError:
         print("⚠️ Pygame not installed. Sound will be disabled. (pip install pygame)")
     except Exception as e:
-        print(f"⚠️ Error initializing sound: {e}")
+        print(f"⚠️ Error initializing sounds: {e}")
 
-    def play_noise(prob=1.0):
-        """Play robot noise with random volume and probability."""
-        if robot_sound and random.random() < prob:
-            # Random volume for natural variation
+    def play_noise(prob=1.0, force=False):
+        """
+        Play a random robot noise.
+        - prob: probability to try playing
+        - force: if True, ignores probability (but still respects cooldown)
+        """
+        nonlocal last_sound_time
+        
+        if not robot_sounds:
+            return
+
+        # Check random probability first
+        if not force and random.random() > prob:
+            return
+
+        # Check cooldown (ensure sounds don't overlap too closely)
+        # We add a slight random element to the cooldown requirements too
+        current_time = time.time()
+        time_since_last = current_time - last_sound_time
+        
+        # Required gap: 1.5 to 3.0 seconds
+        required_gap = random.uniform(1.5, 3.0)
+        
+        if time_since_last < required_gap:
+            return
+
+        try:
+            # Pick random sound
+            snd = random.choice(robot_sounds)
+            
+            # Random volume for variation
             vol = random.uniform(0.1, 0.4)
-            robot_sound.set_volume(vol)
-            robot_sound.play()
+            snd.set_volume(vol)
+            snd.play()
+            
+            last_sound_time = current_time
+        except Exception as e:
+            print(f"Error playing sound: {e}")
 
-    def sleep_with_noise(duration, noise_prob_per_sec=0.1):
-        """Sleeps for duration, checking for random noise triggers every second."""
+    def sleep_with_noise(duration, noise_prob_per_sec=0.2):
+        """Sleeps for duration, checking for random noise triggers."""
         start = time.time()
         while time.time() - start < duration:
-            # Calculate sleep step (max 1.0s or remaining time)
+            # Calculate sleep step
             remaining = duration - (time.time() - start)
-            step = min(1.0, remaining)
+            step = min(0.5, remaining) # Check more frequently (every 0.5s)
             if step <= 0: break
             
             time.sleep(step)
             
-            # Chance to play sound while idle
-            play_noise(prob=noise_prob_per_sec)
+            # Chance to play sound
+            # adjusted prob since we check every 0.5s instead of 1.0s
+            play_noise(prob=noise_prob_per_sec * 0.5)
 
     try:
         disp = init_display()
@@ -87,17 +134,18 @@ def main():
             idle_duration = random.uniform(8.0, 20.0)
             
             # Transition to idle
-            play_noise(prob=0.8) # Sound on state change
+            # force=True to encourage sound on change, but play_noise handles cooldown
+            play_noise(force=True) 
             eyes.set_state("idle")
             
             # Sleep with random background noises
-            sleep_with_noise(idle_duration, noise_prob_per_sec=0.15)
+            sleep_with_noise(idle_duration, noise_prob_per_sec=0.25)
             
             # 2. Pick a random emotion
             emotion = random.choice(emotions)
             
             # Play sound for movement
-            play_noise(prob=0.8) # Sound on state change
+            play_noise(force=True) 
             eyes.set_state(emotion)
             
             # 3. Hold the emotion for a bit
@@ -105,7 +153,7 @@ def main():
             emotion_duration = random.uniform(2.0, 5.0)
             
             # Also use smart sleep here
-            sleep_with_noise(emotion_duration, noise_prob_per_sec=0.1)
+            sleep_with_noise(emotion_duration, noise_prob_per_sec=0.15)
             
     except KeyboardInterrupt:
         print("\n\n🛑 Stopping Eye Show...")
