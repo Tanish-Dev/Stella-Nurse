@@ -58,7 +58,7 @@ class RoboEyes:
         # Eye geometry
         self.eye_size = eye_size
         self.eye_spacing = eye_spacing
-        self.corner_radius = 12
+        self.corner_radius = 20
         
         self.center_y = height // 2
         self.left_eye_x_base = (width // 2) - eye_spacing // 2
