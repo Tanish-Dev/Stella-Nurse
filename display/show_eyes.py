@@ -22,6 +22,25 @@ except ImportError:
 def main():
     print("🤖 Starting Eye Show... (Press Ctrl+C to exit)")
     
+    # Initialize Sound
+    servo_sound = None
+    try:
+        import pygame
+        pygame.mixer.init()
+        # Path to servo sound
+        sound_path = os.path.join(os.path.dirname(__file__), "..", "assets", "sounds", "servo.wav")
+        if os.path.exists(sound_path):
+            servo_sound = pygame.mixer.Sound(sound_path)
+            # Lower volume a bit so it's not annoying
+            servo_sound.set_volume(0.3)
+            print(f"🔊 Sound initialized: {sound_path}")
+        else:
+            print(f"⚠️ Sound file not found at: {sound_path}")
+    except ImportError:
+        print("⚠️ Pygame not installed. Sound will be disabled. (pip install pygame)")
+    except Exception as e:
+        print(f"⚠️ Error initializing sound: {e}")
+
     try:
         disp = init_display()
         eyes = RoboEyes(device=disp, fps=60, display_type="adafruit")
@@ -47,12 +66,22 @@ def main():
             # Random duration between 8 and 20 seconds.
             idle_duration = random.uniform(8.0, 20.0)
             # print(f"State: IDLE ({idle_duration:.1f}s)")
+            
+            # Play sound if transitioning
+            if servo_sound:
+                servo_sound.play()
+                
             eyes.set_state("idle")
             time.sleep(idle_duration)
             
             # 2. Pick a random emotion
             emotion = random.choice(emotions)
             # print(f"State: {emotion.upper()}")
+            
+            # Play sound for movement
+            if servo_sound:
+                servo_sound.play()
+                
             eyes.set_state(emotion)
             
             # 3. Hold the emotion for a bit
@@ -69,6 +98,8 @@ def main():
     finally:
         if 'eyes' in locals():
             eyes.stop()
+        if 'pygame' in locals() and pygame.mixer.get_init():
+            pygame.mixer.quit()
         print("Goodbye!")
 
 if __name__ == "__main__":
