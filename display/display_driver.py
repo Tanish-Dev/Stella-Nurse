@@ -20,7 +20,7 @@ def init_display():
         height=240,
         rotation=90,
         x_offset=0,
-        y_offset=1,
+        y_offset=0,
         bgr=True
     )
 
